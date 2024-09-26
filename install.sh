@@ -24,7 +24,7 @@ function aptInstall() {
 	apt update
 	apt upgrade -y
 	apt autoremove -y
-	apt install -y gpg curl fetch wget gnupg2 ca-certificates lsb-release ubuntu-keyring
+	apt install -y gpg curl wget gnupg2 ca-certificates lsb-release ubuntu-keyring
 
 	# eza
 	curl https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | gpg --dearmor | tee /usr/share/keyrings/gierens.gpg >/dev/null
@@ -190,6 +190,12 @@ function userConfig {
 
 function zshConfig {
 	echo "Set zsh config..."
+
+	rm /root/.zshrc
+	rm -rf /root/.oh-my-zsh
+	rm /home/$USERNAME/.zshrc
+    rm -rf /home/$USERNAME/.oh-my-zsh
+
 	sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 	git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
 	git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
@@ -271,7 +277,7 @@ function adguardInstall() {
 DNS=127.0.0.1
 DNSStubListener=no' > /etc/systemd/resolved.conf.d/adguardhome.conf
 
-	mv /etc/resolv.conf /etc/resolv.conf.backup
+	rm /etc/resolv.conf
 	ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
 	systemctl reload-or-restart systemd-resolved
 
@@ -471,6 +477,7 @@ os:
 schema_version: 28" > /opt/AdGuardHome/AdGuardHome.yaml
 
 	echo "Restarting Adguard Home..."
+	systemctl restart AdGuardHome
 
 	echo ""
 }
@@ -518,13 +525,6 @@ http {
     #gzip  on;
     gzip_vary on;
 
-    # Helper variable for proxying websockets.
-    map $http_upgrade $connection_upgrade {
-        default upgrade;
-        '' close;
-    }
-
-
     include /etc/nginx/conf.d/*.conf;
 }
 ' > /etc/nginx/nginx.conf
@@ -544,7 +544,6 @@ proxy_cache_bypass $cookie_session;
 proxy_no_cache $cookie_session;
 
 # Proxy Header Settings
-proxy_set_header Connection $connection_upgrade;
 proxy_set_header Early-Data $ssl_early_data;
 proxy_set_header Host $host;
 proxy_set_header Proxy "";
@@ -602,7 +601,7 @@ server {
 		proxy_set_header Range \$http_range;
         proxy_set_header If-Range \$http_if_range;
         proxy_redirect off;
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8081;
     }
 
 }" > /etc/nginx/conf.d/3x-ui.conf
