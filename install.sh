@@ -22,11 +22,11 @@ function setVariables() {
 function aptInstall() {
 	echo "Install apt packages..."
 
-	rm /usr/share/keyrings/gierens.gpg
-    rm /etc/apt/sources.list.d/gierens.list
-    rm /usr/share/keyrings/nginx-archive-keyring.gpg
-    rm /etc/apt/sources.list.d/nginx.list
-    rm /etc/apt/preferences.d/99nginx
+	rm -rf /usr/share/keyrings/gierens.gpg
+    rm -rf /etc/apt/sources.list.d/gierens.list
+    rm -rf /usr/share/keyrings/nginx-archive-keyring.gpg
+    rm -rf /etc/apt/sources.list.d/nginx.list
+    rm -rf /etc/apt/preferences.d/99nginx
 
 	apt update
 	apt upgrade -y
@@ -182,6 +182,9 @@ function swapConfig {
 
 function userConfig {
 	echo "Creating user: $USERNAME..."
+	if id "$USERNAME" &>/dev/null; then
+        return
+    fi
 
     adduser $USERNAME
     sed -i "/root[\s\t]*ALL/a $USERNAME ALL=(ALL:ALL) ALL" /etc/sudoers
@@ -198,10 +201,15 @@ function userConfig {
 function zshConfig {
 	echo "Set zsh config..."
 
-	rm /root/.zshrc
+	rm -rf /root/.zshrc
 	rm -rf /root/.oh-my-zsh
-	rm /home/$USERNAME/.zshrc
+	rm -rf /home/$USERNAME/.zshrc
     rm -rf /home/$USERNAME/.oh-my-zsh
+    apt remove fzf
+    rm -rf /usr/bin/fzf
+    rm -rf /usr/bin/fzf-preview.sh
+    rm -rf /usr/bin/fzf-tmux
+    rm -rf /root/.fzf
 
 	sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 	git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
@@ -284,7 +292,7 @@ function adguardInstall() {
 DNS=127.0.0.1
 DNSStubListener=no' > /etc/systemd/resolved.conf.d/adguardhome.conf
 
-	rm /etc/resolv.conf
+	rm -rf /etc/resolv.conf
 	ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
 	systemctl reload-or-restart systemd-resolved
 
@@ -499,7 +507,7 @@ function 3xUiInstall() {
 function nginxConfig() {
 	echo "Set nginx config..."
 
-	rm /etc/nginx/conf.d/default.conf
+	rm -rf /etc/nginx/conf.d/default.conf
 
 	echo '
 user  nginx;
