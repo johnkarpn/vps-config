@@ -284,6 +284,7 @@ function disableIpv6() {
 function adguardInstall() {
 	echo "Install Adguard Home..."
 
+	curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -u
 	curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -c beta
 
 	mkdir -p /etc/systemd/resolved.conf.d
