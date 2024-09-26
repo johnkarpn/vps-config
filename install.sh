@@ -21,6 +21,13 @@ function setVariables() {
 
 function aptInstall() {
 	echo "Install apt packages..."
+
+	rm /usr/share/keyrings/gierens.gpg
+    rm /etc/apt/sources.list.d/gierens.list
+    rm /usr/share/keyrings/nginx-archive-keyring.gpg
+    rm /etc/apt/sources.list.d/nginx.list
+    rm /etc/apt/preferences.d/99nginx
+
 	apt update
 	apt upgrade -y
 	apt autoremove -y
