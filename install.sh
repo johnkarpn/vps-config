@@ -625,6 +625,7 @@ function certbot() {
 }
 
 isRoot
+setVariables
 aptInstall
 swapConfig
 userConfig
