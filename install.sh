@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -x
-
 function isRoot() {
   if [ "${EUID}" -ne 0 ]; then
     echo "You need to run this script as root"
@@ -427,10 +425,6 @@ filters:
     url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt
     name: AdGuard DNS filter
     id: 1
-  - enabled: false
-    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_2.txt
-    name: AdAway Default Blocklist
-    id: 2
   - enabled: true
     url: https://schakal.ru/hosts/hosts_mail_fb.txt
     name: schakal
@@ -746,27 +740,25 @@ include \"/etc/nftables/dns.conf\"
 
 # Raw filtering table
 table inet raw {
-
   # Prerouting traffic rules
   chain prerouting {
-  type filter hook prerouting priority -300;
+    type filter hook prerouting priority -300;
 
-  ## Skip connection tracking for WireGuard inbound
-  iif \$DEV_WAN udp dport \$WIREGUARD_PORT \
+    ## Skip connection tracking for WireGuard inbound
+    iif \$DEV_WAN udp dport \$WIREGUARD_PORT \
     notrack \
     comment \"Skip connection tracking for inbound WireGuard traffic\"
   }
 
   # Output traffic rules
   chain output {
-  type filter hook output priority -300;
+    type filter hook output priority -300;
 
-  ## Skip connection tracking for WireGuard
-  oif \$DEV_WAN udp sport \$WIREGUARD_PORT \
+    ## Skip connection tracking for WireGuard
+    oif \$DEV_WAN udp sport \$WIREGUARD_PORT \
     notrack \
     comment \"Skip connection tracking for outbound WireGuard traffic\"
   }
-
 }
 
 table inet filter {
@@ -904,7 +896,7 @@ disableIpv6
 adguardInstall
 3xUiInstall
 nginxConfig
-#certbot
 wireguardInstall
 nftableConfig
 endConfig
+#certbot
