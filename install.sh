@@ -1,87 +1,88 @@
 #!/usr/bin/env bash
 
-set -e
 set -x
 
 function isRoot() {
-	if [ "${EUID}" -ne 0 ]; then
-		echo "You need to run this script as root"
-		exit 1
-	fi
+  if [ "${EUID}" -ne 0 ]; then
+    echo "You need to run this script as root"
+    exit 1
+  fi
 }
 
 function setVariables() {
-	read -p "Enter username: " USERNAME
-	read -p "Enter domain for Adguard Home: " DOMAIN_ADGUARD
-	read -p "Enter domain for 3X UI: " DOMAIN_3X_UI
+  read -rp "Enter hostname: " -e -i "$(hostname)" HOSTNAME
+  read -rp "Enter username: " -e -i "john" USERNAME
+  read -rp "Enter domain for Adguard Home: " -e -i "dns.$HOSTNAME" DOMAIN_ADGUARD
+  read -rp "Enter Adguard Home password: " ADGUARD_PASS
+  read -rp "Enter Adguard Home web panel port: " -e -i "8080" ADGUARD_PORT
+  read -rp "Enter domain for 3X UI: " -e -i "3x.$HOSTNAME" DOMAIN_3X_UI
 
-	echo ""
+  echo ""
 }
 
-
 function aptInstall() {
-	echo "Install apt packages..."
+  echo "Install apt packages..."
 
-	rm -rf /usr/share/keyrings/gierens.gpg
-    rm -rf /etc/apt/sources.list.d/gierens.list
-    rm -rf /usr/share/keyrings/nginx-archive-keyring.gpg
-    rm -rf /etc/apt/sources.list.d/nginx.list
-    rm -rf /etc/apt/preferences.d/99nginx
+  rm -rf /usr/share/keyrings/gierens.gpg
+  rm -rf /etc/apt/sources.list.d/gierens.list
+  rm -rf /usr/share/keyrings/nginx-archive-keyring.gpg
+  rm -rf /etc/apt/sources.list.d/nginx.list
+  rm -rf /etc/apt/preferences.d/99nginx
 
-	apt update
-	apt upgrade -y
-	apt autoremove -y
-	apt install -y gpg curl wget gnupg2 ca-certificates lsb-release ubuntu-keyring
+  apt update
+  apt upgrade -y
+  apt autoremove -y
+  apt install -y gpg curl wget gnupg2 ca-certificates lsb-release ubuntu-keyring
 
-	# eza
-	curl https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | gpg --dearmor | tee /usr/share/keyrings/gierens.gpg >/dev/null
-	echo "deb [signed-by=/usr/share/keyrings/gierens.gpg] http://deb.gierens.de stable main" | tee /etc/apt/sources.list.d/gierens.list
+  # eza
+  curl https://raw.githubusercontent.com/eza-community/eza/main/deb.asc | gpg --dearmor | tee /usr/share/keyrings/gierens.gpg >/dev/null
+  echo "deb [signed-by=/usr/share/keyrings/gierens.gpg] http://deb.gierens.de stable main" | tee /etc/apt/sources.list.d/gierens.list
 
-	#nginx
-	curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
-	echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu `lsb_release -cs` nginx" | tee /etc/apt/sources.list.d/nginx.list
-	echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" | tee /etc/apt/preferences.d/99nginx
+  #nginx
+  curl https://nginx.org/keys/nginx_signing.key | gpg --dearmor | tee /usr/share/keyrings/nginx-archive-keyring.gpg >/dev/null
+  echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" | tee /etc/apt/sources.list.d/nginx.list
+  echo -e "Package: *\nPin: origin nginx.org\nPin: release o=nginx\nPin-Priority: 900\n" | tee /etc/apt/preferences.d/99nginx
 
-	apt update
-	apt install -y nano \
-				bash-completion \
-				mc \
-				zsh \
-				nftables \
-				htop \
-				git \
-				eza \
-				bat \
-				nginx \
-				fail2ban \
-				lsof \
-				apache2-utils \
-				python3 \
-				python3-venv \
-				libaugeas0
+  apt update
+  apt install -y nano \
+    bash-completion \
+    mc \
+    zsh \
+    nftables \
+    htop \
+    git \
+    eza \
+    bat \
+    nginx \
+    fail2ban \
+    lsof \
+    apache2-utils \
+    python3 \
+    python3-venv \
+    libaugeas0
 
-	#Remove snapd
-	if dpkg -l | grep -q snapd; then
-		if [ "$(snap list 2>/dev/null | wc -l)" -gt 1 ]; then
-			echo "Remove all snap apps..."
-			snap list | awk '!/^Name|^core|^bare|^snapd/ {print $1}' | xargs -I {} snap remove --purge {}
-			snap remove --purge bare
-            snap remove --purge core20
-            snap remove --purge core22
-            snap remove --purge core24
-            snap remove --purge snapd
-        fi
-
-		echo "Remove snapd app..."
-        apt remove -y snapd
-		rm -rf /var/snap
-		rm -rf /var/lib/snapd
-		rm -rf /root/snap
+  #Remove snapd
+  if dpkg -l | grep -q snapd; then
+    if [ "$(snap list 2>/dev/null | wc -l)" -gt 1 ]; then
+      echo "Remove all snap apps..."
+      snap list | awk '!/^Name|^core|^bare|^snapd/ {print $1}' | xargs -I {} snap remove --purge {}
+      snap remove --purge bare
+      snap remove --purge core20
+      snap remove --purge core22
+      snap remove --purge core24
+      snap remove --purge snapd
     fi
 
-    echo ""
-    echo "Configuring nano..."
-    echo "set autoindent
+    echo "Remove snapd app..."
+    apt remove -y snapd
+    rm -rf /var/snap
+    rm -rf /var/lib/snapd
+    rm -rf /root/snap
+  fi
+
+  echo ""
+  echo "Configuring nano..."
+  echo "set autoindent
 set brackets \"\"')>]}\"
 set constantshow
 set historylog
@@ -137,9 +138,9 @@ bind ^K \"{mark}{end}{zap}\" main
 bind ^U \"{mark}{home}{zap}\" main
 bind ^Z undo main
 bind ^Y redo main
-">/etc/nanorc
+" >/etc/nanorc
 
-	echo "set titlecolor bold,white,magenta
+  echo "set titlecolor bold,white,magenta
 set promptcolor black,yellow
 set statuscolor bold,white,magenta
 set errorcolor bold,white,red
@@ -150,83 +151,92 @@ set scrollercolor magenta
 set numbercolor magenta
 set keycolor lightmagenta
 set functioncolor magenta
-">/root/.nanorc
+" >/root/.nanorc
 
-    echo ""
+  if [ "$(sysctl -n net.ipv4.ip_forward)" -eq 0 ]; then
+    echo "net.ipv4.ip_forward = 1" >/etc/sysctl.conf
+
+    sysctl -q --system
+  fi
+
+  echo $HOSTNAME >/etc/hostname
+
+  echo ""
 }
 
-
 function swapConfig {
-	echo "Set swap config..."
-	if swapon --show | grep -q '^'; then
-		echo "Swap is configured"
-		swapon --show
-        return
-	fi
+  echo "Set swap config..."
+  if swapon --show | grep -q '^'; then
+    echo "Swap is configured"
+    swapon --show
+    return
+  fi
 
-	fallocate -l 2G /swapfile
-	chmod 600 /swapfile
-	mkswap /swapfile
-	swapon /swapfile
-	echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  read -rp "Enter swap size: " -e -i 2G SWAP_SIZE
 
-	touch /etc/sysctl.d/10-swap.conf
-	echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.d/10-swap.conf
-	echo 'vm.vfs_cache_pressure = 50' | sudo tee -a /etc/sysctl.d/10-swap.conf
+  fallocate -l $SWAP_SIZE /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-	sysctl -q --system
-	swapon --show
+  touch /etc/sysctl.d/10-swap.conf
+  echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.d/10-swap.conf
+  echo 'vm.vfs_cache_pressure = 50' | sudo tee -a /etc/sysctl.d/10-swap.conf
 
-	echo ""
+  sysctl -q --system
+  swapon --show
+
+  echo ""
 }
 
 function userConfig {
-	echo "Creating user: $USERNAME..."
-	if id "$USERNAME" &>/dev/null; then
-        return
-    fi
+  echo "Creating user: $USERNAME..."
+  if id "$USERNAME" &>/dev/null; then
+    return
+  fi
 
-    adduser $USERNAME
-    sed -i "/root[\s\t]*ALL/a $USERNAME ALL=(ALL:ALL) ALL" /etc/sudoers
-    sed -i '/%admin/s/^/#/' /etc/sudoers
-    sed -i '/%sudo/s/^/#/' /etc/sudoers
+  adduser $USERNAME
+  sed -i "/root[\s\t]*ALL/a $USERNAME ALL=(ALL:ALL) ALL" /etc/sudoers
+  sed -i '/%admin/s/^/#/' /etc/sudoers
+  sed -i '/%sudo/s/^/#/' /etc/sudoers
 
-    cp -r /root/.ssh /home/$USERNAME/
-    chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh/
-    chmod -R 600 /home/$USERNAME/.ssh/
+  cp -r /root/.ssh /home/$USERNAME/
+  chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh/
+  chmod -R 600 /home/$USERNAME/.ssh/
 
-    echo ""
+  echo ""
 }
 
 function zshConfig {
-	echo "Set zsh config..."
+  echo "Set zsh config..."
 
-	rm -rf /root/.zshrc
-	rm -rf /root/.oh-my-zsh
-	rm -rf /home/$USERNAME/.zshrc
-    rm -rf /home/$USERNAME/.oh-my-zsh
-    apt remove fzf
-    rm -rf /usr/bin/fzf
-    rm -rf /usr/bin/fzf-preview.sh
-    rm -rf /usr/bin/fzf-tmux
-    rm -rf /root/.fzf
+  rm -rf /root/.zshrc
+  rm -rf /root/.oh-my-zsh
+  rm -rf /home/$USERNAME/.zshrc
+  rm -rf /home/$USERNAME/.oh-my-zsh
+  apt remove fzf
+  rm -rf /usr/bin/fzf
+  rm -rf /usr/bin/fzf-preview.sh
+  rm -rf /usr/bin/fzf-tmux
+  rm -rf /root/.fzf
 
-	sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-	git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-	git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+  git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 
-	sed -i 's/^ZSH_THEME=".*"/ZSH_THEME="dst"/' /root/.zshrc
-	sed -i '/^plugins=(/c\plugins=(git zsh-syntax-highlighting zsh-autosuggestions)' /root/.zshrc
+  sed -i 's/^ZSH_THEME=".*"/ZSH_THEME="dst"/' /root/.zshrc
+  sed -i '/^plugins=(/c\plugins=(git zsh-syntax-highlighting zsh-autosuggestions)' /root/.zshrc
 
-	usermod -s /usr/bin/zsh root
+  usermod -s /usr/bin/zsh root
 
-	git clone --depth 1 https://github.com/junegunn/fzf.git /root/.fzf
- 	/root/.fzf/install --bin
- 	ln -s /root/.fzf/bin/fzf /usr/bin/fzf
- 	ln -s /root/.fzf/bin/fzf-preview.sh /usr/bin/fzf-preview.sh
- 	ln -s /root/.fzf/bin/fzf-tmux /usr/bin/fzf-tmux
+  git clone --depth 1 https://github.com/junegunn/fzf.git /root/.fzf
+  /root/.fzf/install --bin
+  ln -s /root/.fzf/bin/fzf /usr/bin/fzf
+  ln -s /root/.fzf/bin/fzf-preview.sh /usr/bin/fzf-preview.sh
+  ln -s /root/.fzf/bin/fzf-tmux /usr/bin/fzf-tmux
 
-	echo "export EDITOR='nano'
+  echo "export EDITOR='nano'
 
 alias ls='ls -a --color=auto --group-directories-first'
 alias ll='eza -lga --group-directories-first'
@@ -251,61 +261,73 @@ setopt inc_append_history     # add commands to HISTFILE in order of execution
 setopt share_history          # share command history data
 
 source <(fzf --zsh)
-" >> /root/.zshrc
+" >>/root/.zshrc
 
-	usermod -s /usr/bin/zsh $USERNAME
-    cp /root/.zshrc /home/$USERNAME/.zshrc
-    cp -r /root/.oh-my-zsh/ /home/$USERNAME/
-    chown $USERNAME:$USERNAME /home/$USERNAME/.zshrc
-    chown -R $USERNAME:$USERNAME /home/$USERNAME/.oh-my-zsh
+  usermod -s /usr/bin/zsh $USERNAME
+  cp /root/.zshrc /home/$USERNAME/.zshrc
+  cp -r /root/.oh-my-zsh/ /home/$USERNAME/
+  chown $USERNAME:$USERNAME /home/$USERNAME/.zshrc
+  chown -R $USERNAME:$USERNAME /home/$USERNAME/.oh-my-zsh
 
-    echo ""
+  echo ""
 }
-
 
 function disableIpv6() {
-	read -p "Disable IPv6? (y/n): " answer
-	if [ "$answer" != "y" ]; then
-            return
-    fi
+  read -rp "Disable IPv6? (y/n): " -e -i "y" answer
+  if [ "$answer" != "y" ]; then
+    return
+  fi
 
-    echo 'net.ipv6.conf.all.disable_ipv6=1' | sudo tee -a /etc/sysctl.conf
-    echo 'net.ipv6.conf.default.disable_ipv6=1' | sudo tee -a /etc/sysctl.conf
-    echo 'net.ipv6.conf.lo.disable_ipv6=1' | sudo tee -a /etc/sysctl.conf
+  if [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6)" -eq 0 ]; then
+    echo 'net.ipv6.conf.all.disable_ipv6=1' >/etc/sysctl.conf
+  fi
 
+  if [ "$(sysctl -n net.ipv6.conf.default.disable_ipv6)" -eq 0 ]; then
+    echo 'net.ipv6.conf.default.disable_ipv6=1' >/etc/sysctl.conf
+  fi
+
+  if [ "$(sysctl -n net.ipv6.conf.lo.disable_ipv6)" -eq 0 ]; then
+    echo 'net.ipv6.conf.lo.disable_ipv6=1' >/etc/sysctl.conf
+  fi
+
+  if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT=\".* ipv6.disable=1" /etc/default/grub; then
     sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
-    sed -i 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
-    update-grub
+  fi
 
-    echo ""
+  if ! grep -q "GRUB_CMDLINE_LINUX=\".* ipv6.disable=1" /etc/default/grub; then
+    sed -i 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
+  fi
+
+  sysctl -q --system
+  update-grub
+
+  echo ""
 }
 
-
 function adguardInstall() {
-	echo "Install Adguard Home..."
+  echo "Install Adguard Home..."
 
-	curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -u
-	curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -c beta
+  curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -u
+  curl -s -S -L https://raw.githubusercontent.com/AdguardTeam/AdGuardHome/master/scripts/install.sh | sh -s -- -c beta
 
-	mkdir -p /etc/systemd/resolved.conf.d
+  mkdir -p /etc/systemd/resolved.conf.d
 
-    	echo '[Resolve]
+  echo '[Resolve]
 DNS=127.0.0.1
-DNSStubListener=no' > /etc/systemd/resolved.conf.d/adguardhome.conf
+DNSStubListener=no' >/etc/systemd/resolved.conf.d/adguardhome.conf
 
-	rm -rf /etc/resolv.conf
-	ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
-	systemctl reload-or-restart systemd-resolved
+  rm -rf /etc/resolv.conf
+  ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  systemctl reload-or-restart systemd-resolved
 
-	echo -p "Adguard Home user: $USERNAME"
-	read -p "Enter Adguard Home password: " ADGUARD_PASS
-	ADGUARD_HASH=$(htpasswd -B -C 10 -n -b $USERNAME $ADGUARD_PASS | awk -F':' '{print $2}')
+  echo -p "Adguard Home user: $USERNAME"
+  ADGUARD_HASH=$(htpasswd -B -C 10 -n -b $USERNAME $ADGUARD_PASS | awk -F':' '{print $2}')
 
-	echo "http:
+  echo "http:
   pprof:
     port: 6060
     enabled: false
-  address: 0.0.0.0:8080
+  address: 0.0.0.0:$ADGUARD_PORT
   session_ttl: 720h
 users:
   - name: $USERNAME
@@ -490,27 +512,27 @@ os:
   group: \"\"
   user: \"\"
   rlimit_nofile: 0
-schema_version: 28" > /opt/AdGuardHome/AdGuardHome.yaml
+schema_version: 28" >/opt/AdGuardHome/AdGuardHome.yaml
 
-	echo "Restarting Adguard Home..."
-	systemctl restart AdGuardHome
+  echo "Restarting Adguard Home..."
+  systemctl restart AdGuardHome
 
-	echo ""
+  echo ""
 }
 
 function 3xUiInstall() {
-	echo "Installing 3x-UI panel..."
-	bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+  echo "Installing 3x-UI panel..."
+  bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
 
-	echo ""
+  echo ""
 }
 
 function nginxConfig() {
-	echo "Set nginx config..."
+  echo "Set nginx config..."
 
-	rm -rf /etc/nginx/conf.d/default.conf
+  rm -rf /etc/nginx/conf.d/default.conf
 
-	echo '
+  echo '
 user  nginx;
 worker_processes  auto;
 
@@ -543,9 +565,9 @@ http {
 
     include /etc/nginx/conf.d/*.conf;
 }
-' > /etc/nginx/nginx.conf
+' >/etc/nginx/nginx.conf
 
-	echo '
+  echo '
 proxy_buffers 32 4k;
 proxy_connect_timeout 240;
 proxy_headers_hash_bucket_size 128;
@@ -576,9 +598,9 @@ proxy_set_header X-Original-Method $request_method;
 proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
 proxy_set_header X-Real-IP $remote_addr;
 
-' > /etc/nginx/proxy.conf
+' >/etc/nginx/proxy.conf
 
-	echo "
+  echo "
 server {
     listen 80;
 
@@ -588,23 +610,23 @@ server {
 
     location / {
         include /etc/nginx/proxy.conf;
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:$ADGUARD_PORT;
 
     }
 
     location /control {
         include /etc/nginx/proxy.conf;
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:$ADGUARD_PORT;
 
     }
 
     location /dns-query {
         include /etc/nginx/proxy.conf;
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:$ADGUARD_PORT;
     }
-}" > /etc/nginx/conf.d/adguard.conf
+}" >/etc/nginx/conf.d/adguard.conf
 
-	echo "
+  echo "
 server {
     listen 80;
 
@@ -614,29 +636,261 @@ server {
 
     location / {
         include /etc/nginx/proxy.conf;
-		proxy_set_header Range \$http_range;
+		    proxy_set_header Range \$http_range;
         proxy_set_header If-Range \$http_if_range;
         proxy_redirect off;
         proxy_pass http://127.0.0.1:8081;
     }
 
-}" > /etc/nginx/conf.d/3x-ui.conf
-	echo ""
+}" >/etc/nginx/conf.d/3x-ui.conf
+  echo ""
 
-	systemctl restart nginx
+  systemctl restart nginx
 }
 
 function certbot() {
-	echo "Generate certificates..."
-	python3 -m venv /opt/certbot/
-	/opt/certbot/bin/pip install --upgrade pip
-	/opt/certbot/bin/pip install certbot certbot-nginx
-	ln -s /opt/certbot/bin/certbot /usr/bin/certbot
+  echo "Generate certificates..."
+  python3 -m venv /opt/certbot/
+  /opt/certbot/bin/pip install --upgrade pip
+  /opt/certbot/bin/pip install certbot certbot-nginx
+  ln -s /opt/certbot/bin/certbot /usr/bin/certbot
 
-	certbot --nginx
-	echo "0 0,12 * * * root /opt/certbot/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && sudo certbot renew -q" | sudo tee -a /etc/crontab > /dev/null
+  certbot --nginx
+  echo "0 0,12 * * * root /opt/certbot/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && sudo certbot renew -q" | sudo tee -a /etc/crontab >/dev/null
 
-	echo ""
+  echo ""
+}
+
+function wireguardInstall() {
+  cd ~
+  rm -rf /etc/wireguard/params
+  curl -O https://raw.githubusercontent.com/johnkarpn/wireguard-install/master/wireguard-install.sh
+  chmod +x wireguard-install.sh
+  . ./wireguard-install.sh
+}
+
+function nftableConfig() {
+  echo "Set nftable config..."
+
+  mkdir -p /etc/nftables
+
+  systemctl stop ufw.service
+  systemctl disable ufw.service
+
+  if command -v iptables >/dev/null 2>&1; then
+    iptables -P INPUT ACCEPT
+    iptables -P FORWARD ACCEPT
+    iptables -P OUTPUT ACCEPT
+
+    # Flush All Iptables Chains/Firewall rules #
+    iptables -F
+
+    # Delete all Iptables Chains #
+    iptables -X
+
+    # Flush all counters too #
+    iptables -Z
+    # Flush and delete all nat and  mangle #
+    iptables -t nat -F
+    iptables -t nat -X
+    iptables -t mangle -F
+    iptables -t mangle -X
+    iptables -t raw -F
+    iptables -t raw -X
+  fi
+
+  VPN_PREFIX_V4=$(echo "$SERVER_WG_IPV4" | sed 's/\.[0-9]\+$//').0
+  WIREGUARD_PORT=$SERVER_PORT
+
+  read -p "Enter 3X UI VLESS connection port: " VLESS_PORT
+
+  echo "define dns_addr_list = {
+  127.0.0.1,
+  10.0.0.0/8,
+  172.16.0.0/12,
+  192.168.0.0/16,
+  109.120.158.124," >/etc/nftables/dns.conf
+
+  curl https://cdn.jsdelivr.net/npm/@ip-location-db/geolite2-country/geolite2-country-ipv4.csv | awk -F ',' '/^.*RU/ {print "  "$1"-"$2","}' >>/etc/nftables/dns.conf
+  echo "}" >>/etc/nftables/dns.conf
+
+  echo "#!/usr/sbin/nft -f
+
+flush ruleset
+
+
+################################ VARIABLES ################################
+## Internet/WAN interface name
+define DEV_WAN = $SERVER_PUB_NIC
+## WireGuard interface name
+define DEV_WIREGUARD = $SERVER_WG_NIC
+## VPN client allocation - IPv4
+define VPN_PREFIX_V4 = $VPN_PREFIX_V4/24
+## WireGuard listen port
+define WIREGUARD_PORT = $WIREGUARD_PORT
+## WireGuard listen port
+define VLESS_PORT = $VLESS_PORT
+
+############################## VARIABLES END ##############################
+
+## List of RFC1918 networks
+## Desination traffic from WireGuard clients to these networks will be redirected to the local DNS resolver
+define RFC1918 = {
+  10.0.0.0/8,
+  172.16.0.0/12,
+  192.168.0.0/16
+}
+
+include \"/etc/nftables/dns.conf\"
+
+# Raw filtering table
+table inet raw {
+
+  # Prerouting traffic rules
+  chain prerouting {
+  type filter hook prerouting priority -300;
+
+  ## Skip connection tracking for WireGuard inbound
+  iif \$DEV_WAN udp dport \$WIREGUARD_PORT \
+    notrack \
+    comment \"Skip connection tracking for inbound WireGuard traffic\"
+  }
+
+  # Output traffic rules
+  chain output {
+  type filter hook output priority -300;
+
+  ## Skip connection tracking for WireGuard
+  oif \$DEV_WAN udp sport \$WIREGUARD_PORT \
+    notrack \
+    comment \"Skip connection tracking for outbound WireGuard traffic\"
+  }
+
+}
+
+table inet filter {
+  chain input {
+    type filter hook input priority filter; policy drop
+
+    ## Permit WireGuard traffic
+    iif \$DEV_WAN udp dport \$WIREGUARD_PORT ct state untracked counter accept comment \"Permit inbound untracked WireGuard traffic\"
+
+    ## Permit inbound traffic to loopback interface
+    iif lo accept comment \"Permit all traffic in from loopback interface\"
+
+    ## Permit established and related connections
+    ct state established,related counter accept comment \"Permit established/related connections\"
+
+    ## Log and drop new TCP non-SYN packets
+    #tcp flags != syn ct state new limit rate 100/minute burst 150 packets log prefix \"IN - New !SYN: \" comment \"Rate limit logging for new connections that do not have the SYN TCP flag set\"
+    tcp flags != syn ct state new counter drop comment \"Drop new connections that do not have the SYN TCP flag set\"
+
+     ## Log and drop TCP packets with invalid fin/syn flag set
+    #tcp flags & (fin|syn) == (fin|syn) limit rate 100/minute burst 150 packets log prefix \"IN - TCP FIN|SIN: \" comment \"Rate limit logging for TCP packets with invalid fin/syn flag set\"
+    tcp flags & (fin|syn) == (fin|syn) counter drop comment \"Drop TCP packets with invalid fin/syn flag set\"
+
+    ## Log and drop TCP packets with invalid syn/rst flag set
+    #tcp flags & (syn|rst) == (syn|rst) limit rate 100/minute burst 150 packets log prefix \"IN - TCP SYN|RST: \" comment \"Rate limit logging for TCP packets with invalid syn/rst flag set\"
+    tcp flags & (syn|rst) == (syn|rst) counter drop comment \"Drop TCP packets with invalid syn/rst flag set\"
+
+    ## Log and drop invalid TCP flags
+    #tcp flags & (fin|syn|rst|psh|ack|urg) < (fin) limit rate 100/minute burst 150 packets log prefix \"IN - FIN:\" comment \"Rate limit logging for invalid TCP flags (fin|syn|rst|psh|ack|urg) < (fin)\"
+    tcp flags & (fin|syn|rst|psh|ack|urg) < (fin) counter drop comment \"Drop TCP packets with flags (fin|syn|rst|psh|ack|urg) < (fin)\"
+
+    ## Log and drop invalid TCP flags
+    #tcp flags & (fin|syn|rst|psh|ack|urg) == (fin|psh|urg) limit rate 100/minute burst 150 packets log prefix \"IN - FIN|PSH|URG:\" comment \"Rate limit logging for invalid TCP flags (fin|syn|rst|psh|ack|urg) == (fin|psh|urg)\"
+    tcp flags & (fin|syn|rst|psh|ack|urg) == (fin|psh|urg) counter drop comment \"Drop TCP packets with flags (fin|syn|rst|psh|ack|urg) == (fin|psh|urg)\"
+
+    ## Drop traffic with invalid connection state
+    #ct state invalid limit rate 100/minute burst 150 packets log flags all prefix \"IN - Invalid: \" comment \"Rate limit logging for traffic with invalid connection state\"
+    ct state invalid counter drop comment \"Drop traffic with invalid connection state\"
+
+    ## Permit IPv4 ping/ping responses but rate limit to 2000 PPS
+    ip protocol icmp icmp type { echo-reply, echo-request } limit rate 2000/second counter accept comment \"Permit inbound IPv4 echo (ping) limited to 2000 PPS\"
+
+    ## Permit all other inbound IPv4 ICMP
+    ip protocol icmp counter accept comment \"Permit all other IPv4 ICMP\"
+
+    ## Permit inbound traceroute UDP ports but limit to 500 PPS
+    udp dport 33434-33524 limit rate 500/second counter accept comment \"Permit inbound UDP traceroute limited to 500 PPS\"
+
+    ## Permit inbound SSH
+    tcp dport ssh ct state new counter accept comment \"Permit inbound SSH connections\"
+
+    ## Permit inbound HTTP and HTTPS
+    tcp dport { http, https } ct state new counter accept comment \"Permit inbound HTTP and HTTPS connections\"
+
+    #tcp dport 53 ct state new counter accept comment \"Permit DNS connections\"
+    #udp dport 53 ct state new counter accept comment \"Permit DNS connections\"
+    #tcp dport 853 ct state new counter accept comment \"Permit DNS connections\"
+    #udp dport 853 ct state new counter accept comment \"Permit DNS connections\"
+
+    tcp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
+    udp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
+    tcp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
+    udp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
+
+    udp dport \$WIREGUARD_PORT counter accept comment \"Permit WG connections\"
+    tcp dport \$VLESS_PORT counter accept comment \"Permit 3X VLESS connections\"
+  }
+
+  chain forward {
+    type filter hook forward priority filter; policy drop
+
+    ## Permit connections from WireGuard clients out to internet
+    iifname \$DEV_WIREGUARD oif \$DEV_WAN counter accept comment \"Permit connections from WireGuard clients out to internet\"
+
+    ## Drop connections from WireGuard clients to other WireGuard clients
+    iifname \$DEV_WIREGUARD oifname \$DEV_WIREGUARD counter drop comment \"Prevent connections from WireGuard clients to other WireGuard clients\"
+
+    ## Permit established and related connections from WAN to WireGuard clients
+    iif \$DEV_WAN oifname \$DEV_WIREGUARD ct state established,related counter accept comment \"Permit established/related connections\"
+
+    ## Permit traffic from WireGuard to loopback interface to allow access to this server itself
+    iifname \$DEV_WIREGUARD oif lo counter accept comment \"Permit inbound traffic from WireGuard clients to local loopback interface\"
+
+    ## Count the unmatched traffic
+    counter comment \"Count any unmatched traffic\"
+  }
+
+  chain output {
+    type filter hook output priority filter; policy accept
+
+    ## Permit WireGuard traffic
+    oif \$DEV_WAN udp sport \$WIREGUARD_PORT ct state untracked counter accept comment \"Permit outbound untracked WireGuard traffic\"
+  }
+
+  chain check_dns {
+    ip saddr \$dns_addr_list counter accept
+
+    drop
+  }
+}
+
+table inet nat {
+  # Rules for traffic pre-routing
+  chain prerouting {
+    type nat hook prerouting priority 0; policy accept
+
+    ## Redirect RFC1918 DNS traffic to prevent DNS leaks
+    iifname \$DEV_WIREGUARD ip saddr \$VPN_PREFIX_V4 meta l4proto { tcp, udp } th dport 53 ip daddr \$RFC1918 counter redirect comment \"Redirect DNS traffic to RFC1918 networks to local DNS resolver to prevent DNS leaks\"
+  }
+
+  chain postrouting {
+    type nat hook postrouting priority srcnat; policy accept;
+    oifname \$DEV_WAN counter masquerade
+  }
+}
+" >/etc/nftables.conf
+
+  systemctl enable nftables
+  systemctl restart nftables
+
+  echo ""
+}
+
+function endConfig() {
+    apt autoremove -y
 }
 
 isRoot
@@ -649,4 +903,7 @@ disableIpv6
 adguardInstall
 3xUiInstall
 nginxConfig
-certbot
+#certbot
+wireguardInstall
+nftableConfig
+endConfig
