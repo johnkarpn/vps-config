@@ -59,7 +59,8 @@ function aptInstall() {
     apache2-utils \
     python3 \
     python3-venv \
-    libaugeas0
+    libaugeas0 \
+    crypt
 
   #Remove snapd
   if dpkg -l | grep -q snapd; then
