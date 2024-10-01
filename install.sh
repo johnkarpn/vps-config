@@ -8,12 +8,22 @@ function isRoot() {
 }
 
 function setVariables() {
+  ADGUARD_PORT=8080
+  X_UI_PORT=8081
+  X_UI_RNDSTR=$(tr -dc A-Za-z0-9 </dev/urandom | head -c "$(shuf -i 6-12 -n 1)")
+
   read -rp "Enter hostname: " -e -i "$(hostname)" HOSTNAME
   read -rp "Enter username: " -e -i "john" USERNAME
-  read -rp "Enter domain for Adguard Home: " -e -i "dns.$HOSTNAME" DOMAIN_ADGUARD
-  read -rp "Enter Adguard Home password: " ADGUARD_PASS
-  read -rp "Enter Adguard Home web panel port: " -e -i "8080" ADGUARD_PORT
-  read -rp "Enter domain for 3X UI: " -e -i "3x.$HOSTNAME" DOMAIN_3X_UI
+  read -rp "Adguard Home. Enter domain: " -e -i "dns.$HOSTNAME" DOMAIN_ADGUARD
+  read -rp "Adguard Home. Enter password: " ADGUARD_PASS
+  read -rp "3X UI panel. Enter domain: " -e -i "3x.$HOSTNAME" DOMAIN_3X_UI
+  read -rp "3X UI panel. Enter password: " X_UI_PASS
+  read -rp "3X UI panel. Enter path: " -e -i "$X_UI_RNDSTR" X_UI_RNDSTR
+
+  RANDOM_PORT=$(shuf -i49152-65535 -n1)
+  until [[ ${VLESS_PORT} =~ ^[0-9]+$ ]] && [ "${VLESS_PORT}" -ge 1 ] && [ "${VLESS_PORT}" -le 65535 ]; do
+    read -rp "3X UI VLESS. Enter connection port [1-65535]: " -e -i "${RANDOM_PORT}" VLESS_PORT
+  done
 
   CONFIG_IPV6=0
   read -rp "Disable IPv6? (y/n): " -e -i "y" answer
@@ -88,10 +98,15 @@ function setVariables() {
     fi
   done
 
+  VPN_PREFIX_V4=$(echo "$SERVER_WG_IPV4" | sed 's/\.[0-9]\+$//').0
+  read -rp "SSH. Allow root login from IP: " -e -i "$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1/8" SSH_ALLOW_IP
+
+  read -rp "Fail2Ban. Ignore IP: " -e -i "$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1/8" FAIL2BAN_IGNORE_IP
+
   echo ""
 }
 
-function aptInstall() {
+function mainInstall() {
   echo "Install apt packages..."
 
   rm -rf /usr/share/keyrings/gierens.gpg
@@ -102,7 +117,6 @@ function aptInstall() {
 
   apt update
   apt upgrade -y
-  apt autoremove -y
   apt install -y gpg curl wget gnupg2 ca-certificates lsb-release ubuntu-keyring
 
   # eza
@@ -130,7 +144,9 @@ function aptInstall() {
     apache2-utils \
     python3 \
     python3-venv \
-    libaugeas0
+    libaugeas0 \
+    cron \
+    rsyslog
 
   #Remove snapd
   if dpkg -l | grep -q snapd; then
@@ -224,13 +240,21 @@ set keycolor lightmagenta
 set functioncolor magenta
 " >/root/.nanorc
 
-  if [ "$(sysctl -n net.ipv4.ip_forward)" -eq 0 ]; then
-    echo "net.ipv4.ip_forward = 1" >/etc/sysctl.conf
-
-    sysctl -q --system
-  fi
+  echo "net.ipv4.ip_forward = 1
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
 
   echo $HOSTNAME >/etc/hostname
+
+  echo ""
+  echo "Config sshd..."
+  sed -i 's/#\?\(PermitRootLogin\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 no/' /etc/ssh/sshd_config
+
+  echo "Match Address $SSH_ALLOW_IP
+		PermitRootLogin yes
+		PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
 
   echo ""
 }
@@ -251,11 +275,9 @@ function swapConfig {
   swapon /swapfile
   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
-  touch /etc/sysctl.d/10-swap.conf
-  echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.d/10-swap.conf
-  echo 'vm.vfs_cache_pressure = 50' | sudo tee -a /etc/sysctl.d/10-swap.conf
+  echo 'vm.swappiness=10
+vm.vfs_cache_pressure = 50' > /etc/sysctl.d/10-swap.conf
 
-  sysctl -q --system
   swapon --show
 
   echo ""
@@ -272,6 +294,7 @@ function userConfig {
   sed -i '/%admin/s/^/#/' /etc/sudoers
   sed -i '/%sudo/s/^/#/' /etc/sudoers
 
+  mkdir -p /root/.ssh
   cp -r /root/.ssh /home/$USERNAME/
   chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh/
   chmod -R 600 /home/$USERNAME/.ssh/
@@ -350,17 +373,9 @@ function disableIpv6() {
     return
   fi
 
-  if [ "$(sysctl -n net.ipv6.conf.all.disable_ipv6)" -eq 0 ]; then
-    echo 'net.ipv6.conf.all.disable_ipv6=1' >/etc/sysctl.conf
-  fi
-
-  if [ "$(sysctl -n net.ipv6.conf.default.disable_ipv6)" -eq 0 ]; then
-    echo 'net.ipv6.conf.default.disable_ipv6=1' >/etc/sysctl.conf
-  fi
-
-  if [ "$(sysctl -n net.ipv6.conf.lo.disable_ipv6)" -eq 0 ]; then
-    echo 'net.ipv6.conf.lo.disable_ipv6=1' >/etc/sysctl.conf
-  fi
+  echo 'net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
+net.ipv6.conf.lo.disable_ipv6=1' >/etc/sysctl.d/10-disable_ipv6.conf
 
   if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT=\".* ipv6.disable=1" /etc/default/grub; then
     sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
@@ -370,7 +385,6 @@ function disableIpv6() {
     sed -i 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
   fi
 
-  sysctl -q --system
   update-grub
 
   echo ""
@@ -590,8 +604,25 @@ schema_version: 28" >/opt/AdGuardHome/AdGuardHome.yaml
 
 function 3xUiInstall() {
   echo "Installing 3x-UI panel..."
-  bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+  printf 'n\n' | bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
 
+  /usr/local/x-ui/x-ui setting -username "$USERNAME" -password "$X_UI_PASS"
+  /usr/local/x-ui/x-ui setting -remove_secret
+  /usr/local/x-ui/x-ui setting -webBasePath "/$X_UI_RNDSTR/"
+  /usr/local/x-ui/x-ui setting -port "$X_UI_PORT"
+
+  # Check if service log file exists so fail2ban won't return error
+  if ! test -f /var/log/3xipl.log; then
+    touch /var/log/3xipl.log
+  fi
+
+  x-ui restart
+
+  crontab -l | grep -v "x-ui" | crontab -
+  (
+    crontab -l 2>/dev/null
+    echo '0 4 * * * x-ui restart > /dev/null 2>&1'
+  ) | crontab -
   echo ""
 }
 
@@ -714,6 +745,12 @@ server {
   echo ""
 
   systemctl restart nginx
+
+  crontab -l | grep -v "nginx" | crontab -
+  (
+    crontab -l 2>/dev/null
+    echo '1 4 * * * nginx -s reload'
+  ) | crontab -
 }
 
 function certbot() {
@@ -723,8 +760,13 @@ function certbot() {
   /opt/certbot/bin/pip install certbot certbot-nginx
   ln -s /opt/certbot/bin/certbot /usr/bin/certbot
 
-  certbot --nginx
-  echo "0 0,12 * * * root /opt/certbot/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && sudo certbot renew -q" | sudo tee -a /etc/crontab >/dev/null
+  certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email
+
+  crontab -l | grep -v "certbot" | crontab -
+  (
+    crontab -l 2>/dev/null
+    echo "0 0,12 * * * /opt/certbot/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && sudo certbot renew -q"
+  ) | crontab -
 
   echo ""
 }
@@ -781,19 +823,14 @@ function nftableConfig() {
     iptables -t raw -X
   fi
 
-  VPN_PREFIX_V4=$(echo "$SERVER_WG_IPV4" | sed 's/\.[0-9]\+$//').0
-  WIREGUARD_PORT=$SERVER_PORT
-
-  read -p "Enter 3X UI VLESS connection port: " VLESS_PORT
-
   echo "define dns_addr_list = {
   127.0.0.1,
   10.0.0.0/8,
   172.16.0.0/12,
   192.168.0.0/16,
-  109.120.158.124," >/etc/nftables/dns.conf
+  $SERVER_PUB_IP," >/etc/nftables/dns.conf
 
-  curl https://cdn.jsdelivr.net/npm/@ip-location-db/geolite2-country/geolite2-country-ipv4.csv | awk -F ',' '/^.*RU/ {print "  "$1"-"$2","}' >>/etc/nftables/dns.conf
+  curl https://cdn.jsdelivr.net/npm/@ip-location-db/geolite2-country/geolite2-country-ipv4.csv | awk -F ',' '/^.*RU/ { if ($1 == $2) print "  "$1","; else print "  "$1"-"$2","}' >>/etc/nftables/dns.conf
   echo "}" >>/etc/nftables/dns.conf
 
   echo "#!/usr/sbin/nft -f
@@ -809,7 +846,7 @@ define DEV_WIREGUARD = $SERVER_WG_NIC
 ## VPN client allocation - IPv4
 define VPN_PREFIX_V4 = $VPN_PREFIX_V4/24
 ## WireGuard listen port
-define WIREGUARD_PORT = $WIREGUARD_PORT
+define WIREGUARD_PORT = $SERVER_WG_PORT
 ## WireGuard listen port
 define VLESS_PORT = $VLESS_PORT
 
@@ -969,14 +1006,49 @@ table inet nat {
   echo ""
 }
 
+function fail2banConfig() {
+  echo "Set fail2ban config..."
+  echo "[DEFAULT]
+bantime  = 7d
+findtime  = 1h
+maxretry = 5
+banaction = nftables-multiport
+banaction_allports = nftables-allports
+ignoreip = $FAIL2BAN_IGNORE_IP
+backend = auto
+
+[sshd]
+enabled = true
+
+[3x-ipl]
+enabled=true
+backend = auto
+filter=3x-ipl
+logpath=/var/log/3xipl.log
+maxretry=5
+findtime=1h
+bantime=7d
+" >/etc/fail2ban/jail.local
+
+  echo '[Definition]
+datepattern = ^%%Y/%%m/%%d %%H:%%M:%%S
+failregex   = \[LIMIT_IP\]\s*Email\s*=\s*<F-USER>.+</F-USER>\s*\|\|\s*SRC\s*=\s*<ADDR>
+ignoreregex =' >/etc/fail2ban/filter.d/3x-ipl.conf
+
+  systemctl restart fail2ban
+
+  echo ""
+}
+
 function endConfig() {
+  sysctl -q --system
   apt autoremove -y
 }
 
 isRoot
 setVariables
 userConfig
-aptInstall
+mainInstall
 swapConfig
 zshConfig
 disableIpv6
@@ -985,5 +1057,6 @@ adguardInstall
 nginxConfig
 wireguardInstall
 nftableConfig
+fail2banConfig
 endConfig
-#certbot
+certbot
