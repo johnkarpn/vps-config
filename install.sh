@@ -248,13 +248,13 @@ net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
 
   echo ""
   echo "Config sshd..."
-  sed -i 's/#\?\(PermitRootLogin\s*\).*$/\1 no/' /etc/ssh/sshd_config
-  sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
-  sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  #  sed -i 's/#\?\(PermitRootLogin\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  #  sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  #  sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 yes/' /etc/ssh/sshd_config
 
-  echo "Match Address $SSH_ALLOW_IP
-		PermitRootLogin yes
-		PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
+  #  echo "Match Address $SSH_ALLOW_IP
+  #		PermitRootLogin yes
+  #		PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
 
   echo ""
 }
@@ -276,7 +276,7 @@ function swapConfig {
   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 
   echo 'vm.swappiness=10
-vm.vfs_cache_pressure = 50' > /etc/sysctl.d/10-swap.conf
+vm.vfs_cache_pressure = 50' >/etc/sysctl.d/10-swap.conf
 
   swapon --show
 
@@ -401,10 +401,6 @@ function adguardInstall() {
   echo '[Resolve]
 DNS=127.0.0.1
 DNSStubListener=no' >/etc/systemd/resolved.conf.d/adguardhome.conf
-
-  rm -rf /etc/resolv.conf
-  ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
-  systemctl reload-or-restart systemd-resolved
 
   echo -p "Adguard Home user: $USERNAME"
   ADGUARD_HASH=$(htpasswd -B -C 10 -n -b $USERNAME $ADGUARD_PASS | awk -F':' '{print $2}')
@@ -760,7 +756,7 @@ function certbot() {
   /opt/certbot/bin/pip install certbot certbot-nginx
   ln -s /opt/certbot/bin/certbot /usr/bin/certbot
 
-  certbot --nginx --non-interactive --agree-tos --register-unsafely-without-email
+  certbot --nginx --agree-tos --register-unsafely-without-email
 
   crontab -l | grep -v "certbot" | crontab -
   (
@@ -1042,7 +1038,13 @@ ignoreregex =' >/etc/fail2ban/filter.d/3x-ipl.conf
 
 function endConfig() {
   sysctl -q --system
+  apt remove -y resolveconf
   apt autoremove -y
+
+  rm -rf /etc/resolv.conf
+  ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  systemctl reload-or-restart systemd-resolved
+  systemctl enable systemd-resolved
 }
 
 isRoot
