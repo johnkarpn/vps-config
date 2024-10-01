@@ -1038,7 +1038,7 @@ ignoreregex =' >/etc/fail2ban/filter.d/3x-ipl.conf
 
 function endConfig() {
   sysctl -q --system
-  apt remove -y resolveconf
+  apt remove -y resolvconf
   apt autoremove -y
 
   rm -rf /etc/resolv.conf
