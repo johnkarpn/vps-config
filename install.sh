@@ -297,7 +297,8 @@ function userConfig {
   mkdir -p /root/.ssh
   cp -r /root/.ssh /home/$USERNAME/
   chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh/
-  chmod -R 600 /home/$USERNAME/.ssh/
+  chmod 700 /home/$USERNAME/.ssh
+  chmod 600 /home/$USERNAME/.ssh/*
 
   echo ""
 
