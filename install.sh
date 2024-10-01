@@ -99,9 +99,9 @@ function setVariables() {
   done
 
   VPN_PREFIX_V4=$(echo "$SERVER_WG_IPV4" | sed 's/\.[0-9]\+$//').0
-  read -rp "SSH. Allow root login from IP: " -e -i "$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1/8" SSH_ALLOW_IP
+  read -rp "SSH. Allow root login from IP: " -e -i "$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1" SSH_ALLOW_IP
 
-  read -rp "Fail2Ban. Ignore IP: " -e -i "$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1/8" FAIL2BAN_IGNORE_IP
+  read -rp "Fail2Ban. Ignore IP: " -e -i "$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1" FAIL2BAN_IGNORE_IP
 
   echo ""
 }
@@ -248,13 +248,13 @@ net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
 
   echo ""
   echo "Config sshd..."
-  #  sed -i 's/#\?\(PermitRootLogin\s*\).*$/\1 no/' /etc/ssh/sshd_config
-  #  sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
-  #  sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 yes/' /etc/ssh/sshd_config
+  sed -i 's/#\?\(PermitRootLogin\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
+  sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 yes/' /etc/ssh/sshd_config
 
-  #  echo "Match Address $SSH_ALLOW_IP
-  #		PermitRootLogin yes
-  #		PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
+  echo "Match Address $SSH_ALLOW_IP
+  PermitRootLogin yes
+  PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
 
   echo ""
 }
@@ -377,13 +377,8 @@ function disableIpv6() {
 net.ipv6.conf.default.disable_ipv6=1
 net.ipv6.conf.lo.disable_ipv6=1' >/etc/sysctl.d/10-disable_ipv6.conf
 
-  if ! grep -q "GRUB_CMDLINE_LINUX_DEFAULT=\".* ipv6.disable=1" /etc/default/grub; then
-    sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
-  fi
-
-  if ! grep -q "GRUB_CMDLINE_LINUX=\".* ipv6.disable=1" /etc/default/grub; then
-    sed -i 's/^\(GRUB_CMDLINE_LINUX=".*\)"/\1 ipv6.disable=1"/' /etc/default/grub
-  fi
+  sed -i '/^GRUB_CMDLINE_LINUX_DEFAULT=/ { /ipv6.disable=1/! s/"$/ ipv6.disable=1"/ }' /etc/default/grub
+  sed -i '/^GRUB_CMDLINE_LINUX=/ { /ipv6.disable=1/! s/"$/ ipv6.disable=1"/ }' /etc/default/grub
 
   update-grub
 
@@ -401,6 +396,12 @@ function adguardInstall() {
   echo '[Resolve]
 DNS=127.0.0.1
 DNSStubListener=no' >/etc/systemd/resolved.conf.d/adguardhome.conf
+
+  rm -rf /etc/resolv.conf
+  ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  sed -i 's/^DNS=[0-9. ]*/DNS=127.0.0.1/' /etc/systemd/resolved.conf
+  systemctl reload-or-restart systemd-resolved
+  systemctl enable systemd-resolved
 
   echo -p "Adguard Home user: $USERNAME"
   ADGUARD_HASH=$(htpasswd -B -C 10 -n -b $USERNAME $ADGUARD_PASS | awk -F':' '{print $2}')
@@ -754,14 +755,20 @@ function certbot() {
   python3 -m venv /opt/certbot/
   /opt/certbot/bin/pip install --upgrade pip
   /opt/certbot/bin/pip install certbot certbot-nginx
-  ln -s /opt/certbot/bin/certbot /usr/bin/certbot
+  ln -sf /opt/certbot/bin/certbot /usr/bin/certbot
 
-  certbot --nginx --agree-tos --register-unsafely-without-email
+  certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_ADGUARD" -d "$DOMAIN_ADGUARD" -d "$DOMAIN_3X_UI"
 
   crontab -l | grep -v "certbot" | crontab -
   (
     crontab -l 2>/dev/null
-    echo "0 0,12 * * * /opt/certbot/bin/python -c 'import random; import time; time.sleep(random.random() * 3600)' && sudo certbot renew -q"
+    echo '0 0,12 * * * /usr/bin/certbot renew --post-hook "systemctl reload nginx"'
+  ) | crontab -
+
+  crontab -l | grep -v "pip" | crontab -
+  (
+    crontab -l 2>/dev/null
+    echo "0 0 * */1 * rm -rf /opt/certbot; /usr/bin/python3 -m venv /opt/certbot/; /opt/certbot/bin/pip install --upgrade pip; /opt/certbot/bin/pip install certbot certbot-nginx"
   ) | crontab -
 
   echo ""
@@ -775,6 +782,7 @@ function wireguardInstall() {
 
   export WG_QUIET=1
   export CONFIG_FIREWALL=0
+  export DISABLE_RESOLVCONF=1
   export CONFIG_IPV6=${CONFIG_IPV6}
   export SERVER_PUB_IP=${SERVER_PUB_IP}
   export SERVER_PUB_NIC=${SERVER_PUB_NIC}
@@ -1031,6 +1039,7 @@ datepattern = ^%%Y/%%m/%%d %%H:%%M:%%S
 failregex   = \[LIMIT_IP\]\s*Email\s*=\s*<F-USER>.+</F-USER>\s*\|\|\s*SRC\s*=\s*<ADDR>
 ignoreregex =' >/etc/fail2ban/filter.d/3x-ipl.conf
 
+  systemctl enable fail2ban
   systemctl restart fail2ban
 
   echo ""
@@ -1038,13 +1047,7 @@ ignoreregex =' >/etc/fail2ban/filter.d/3x-ipl.conf
 
 function endConfig() {
   sysctl -q --system
-  apt remove -y resolvconf
   apt autoremove -y
-
-  rm -rf /etc/resolv.conf
-  ln -s /run/systemd/resolve/resolv.conf /etc/resolv.conf
-  systemctl reload-or-restart systemd-resolved
-  systemctl enable systemd-resolved
 }
 
 isRoot
