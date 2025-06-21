@@ -7,46 +7,96 @@ function isRoot() {
   fi
 }
 
+ask_yes_no() {
+  local prompt default answer
+
+  prompt="$1"
+  default="$2" # "y" или "n"
+
+  while true; do
+    if [ "$default" = "y" ]; then
+      read -rp "$prompt [Y/n]: " answer
+      answer=${answer:-y}
+    elif [ "$default" = "n" ]; then
+      read -rp "$prompt [y/N]: " answer
+      answer=${answer:-n}
+    else
+      read -rp "$prompt [y/n]: " answer
+    fi
+
+    answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
+    case "$answer" in
+    y | yes) return 0 ;; # true
+    n | no) return 1 ;;  # false
+    *) echo "Please answer yes or no." ;;
+    esac
+  done
+}
+
+ask_input() {
+  local prompt default answer
+
+  prompt="$1"
+  default="$2"
+
+  if [ -n "$default" ]; then
+    read -erp "$prompt [$default]: " answer
+    # Если пользователь ничего не ввёл, подставляем default
+    answer="${answer:-$default}"
+  else
+    read -erp "$prompt: " answer
+  fi
+
+  echo "$answer"
+}
+
 function setVariables() {
   ADGUARD_PORT=8080
   X_UI_PORT=8081
   X_UI_RNDSTR=$(tr -dc A-Za-z0-9 </dev/urandom | head -c "$(shuf -i 6-12 -n 1)")
 
   INSTALL_ADGUARD=0
-  read -rp "Install Adguard Home? (y/n): " -e -i "y" answer
-  if [ "$answer" == "y" ]; then
+  if ask_yes_no "Install Adguard Home?" "y"; then
     INSTALL_ADGUARD=1
   fi
 
   INSTALL_3XUI=0
-  read -rp "Install 3X UI Panel? (y/n): " -e -i "y" answer
-  if [ "$answer" == "y" ]; then
+  if ask_yes_no "Install 3X UI Panel?" "y"; then
     INSTALL_3XUI=1
   fi
 
-  read -rp "Enter hostname: " -e -i "$(hostname)" HOSTNAME
-  read -rp "Enter username: " -e -i "john" USERNAME
+  CERTBOT=0
+  if [[ "$INSTALL_ADGUARD" -eq 1 || "$INSTALL_3XUI" -eq 1 ]]; then
+      if ask_yes_no "Generate certificates for domains?" "y"; then
+        CERTBOT=1
+      fi
+  fi
+
+  HOSTNAME=$(ask_input "Enter hostname" "$(hostname)")
+  USERNAME=$(ask_input "Enter username" "john")
 
   if [ "$INSTALL_ADGUARD" -eq 1 ]; then
-    read -rp "Adguard Home. Enter domain: " -e -i "dns.$HOSTNAME" DOMAIN_ADGUARD
-    read -rp "Adguard Home. Enter password: " ADGUARD_PASS
+    DOMAIN_ADGUARD=$(ask_input "Adguard Home. Enter domain" "dns.$HOSTNAME")
+    read -rsp "Adguard Home. Enter password: " ADGUARD_PASS
+    echo ""
   fi
 
   if [ "$INSTALL_3XUI" -eq 1 ]; then
-    read -rp "3X UI panel. Enter domain: " -e -i "3x.$HOSTNAME" DOMAIN_3X_UI
-    read -rp "3X UI panel. Enter password: " X_UI_PASS
-    read -rp "3X UI panel. Enter path: " -e -i "$X_UI_RNDSTR" X_UI_RNDSTR
+    DOMAIN_3X_UI=$(ask_input "3X UI panel. Enter domain" "3x.$HOSTNAME")
+    read -rsp "3X UI panel. Enter password: " X_UI_PASS
+    echo ""
+    X_UI_RNDSTR=$(ask_input "3X UI panel. Enter path" "$X_UI_RNDSTR")
 
     RANDOM_PORT=$(shuf -i49152-65535 -n1)
-    until [[ ${VLESS_PORT} =~ ^[0-9]+$ ]] && [ "${VLESS_PORT}" -ge 1 ] && [ "${VLESS_PORT}" -le 65535 ]; do
-      read -rp "3X UI VLESS. Enter connection port [1-65535]: " -e -i "${RANDOM_PORT}" VLESS_PORT
+    while ! [[ ${VLESS_PORT} =~ ^[0-9]+$ ]] || [ "${VLESS_PORT}" -lt 1 ] || [ "${VLESS_PORT}" -gt 65535 ]; do
+      VLESS_PORT=$(ask_input "3X UI VLESS. Enter connection port [1-65535]" "${RANDOM_PORT}")
     done
   fi
 
-  CONFIG_IPV6=0
-  read -rp "Disable IPv6? (y/n): " -e -i "y" answer
-  if [ "$answer" != "y" ]; then
-    CONFIG_IPV6=1
+  CONFIG_IPV6=1
+  if ask_yes_no "Disable IPv6?" "y"; then
+    CONFIG_IPV6=0
   fi
 
   SERVER_PUB_IP=$(ip -4 addr | sed -ne 's|^.* inet \([^/]*\)/.* scope global.*$|\1|p' | awk '{print $1}' | head -1)
@@ -61,65 +111,63 @@ function setVariables() {
   fi
 
   if [ "$CONFIG_IPV6" -eq 0 ]; then
-    until [[ ${SERVER_PUB_IP} =~ ^([0-9]{1,3}\.){3} ]]; do
-      read -rp "IPv4 public address: " -e -i "${SERVER_PUB_IP}" SERVER_PUB_IP
+    while ! [[ ${SERVER_PUB_IP} =~ ^([0-9]{1,3}\.){3} ]]; do
+      SERVER_PUB_IP=$(ask_input "IPv4 public address" "$SERVER_PUB_IP")
     done
   else
-    read -rp "IPv4 or IPv6 public address: " -e -i "${SERVER_PUB_IP}" SERVER_PUB_IP
+    SERVER_PUB_IP=$(ask_input "IPv4 or IPv6 public address" "$SERVER_PUB_IP")
   fi
 
-  SERVER_NIC="$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)"
-  until [[ ${SERVER_PUB_NIC} =~ ^[a-zA-Z0-9_]+$ ]]; do
-    read -rp "Public interface: " -e -i "${SERVER_NIC}" SERVER_PUB_NIC
+  SERVER_NIC=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
+  while ! [[ ${SERVER_PUB_NIC} =~ ^[a-zA-Z0-9_]+$ ]]; do
+    SERVER_PUB_NIC=$(ask_input "Public interface" "$SERVER_NIC")
   done
 
-  until [[ ${SERVER_WG_NIC} =~ ^[a-zA-Z0-9_]+$ && ${#SERVER_WG_NIC} -lt 16 ]]; do
-    read -rp "WireGuard interface name: " -e -i wg0 SERVER_WG_NIC
+  while ! [[ ${SERVER_WG_NIC} =~ ^[a-zA-Z0-9_]+$ && ${#SERVER_WG_NIC} -lt 16 ]]; do
+    SERVER_WG_NIC=$(ask_input "WireGuard interface name" "wg0")
   done
 
-  until [[ ${SERVER_WG_IPV4} =~ ^([0-9]{1,3}\.){3} ]]; do
-    read -rp "Server WireGuard IPv4: " -e -i 10.66.66.1 SERVER_WG_IPV4
+  while ! [[ ${SERVER_WG_IPV4} =~ ^([0-9]{1,3}\.){3} ]]; do
+    SERVER_WG_IPV4=$(ask_input "Server WireGuard IPv4" "10.66.66.1")
   done
 
   if [ "$CONFIG_IPV6" -eq 1 ]; then
-    until [[ ${SERVER_WG_IPV6} =~ ^([a-f0-9]{1,4}:){3,4}: ]]; do
-      read -rp "Server WireGuard IPv6: " -e -i fd42:42:42::1 SERVER_WG_IPV6
+    while ! [[ ${SERVER_WG_IPV6} =~ ^([a-f0-9]{1,4}:){3,4}: ]]; do
+      SERVER_WG_IPV6=$(ask_input "Server WireGuard IPv6" "fd42:42:42::1")
     done
   fi
 
   RANDOM_PORT=$(shuf -i49152-65535 -n1)
-  until [[ ${SERVER_WG_PORT} =~ ^[0-9]+$ ]] && [ "${SERVER_WG_PORT}" -ge 1 ] && [ "${SERVER_WG_PORT}" -le 65535 ]; do
-    read -rp "Server WireGuard port [1-65535]: " -e -i "${RANDOM_PORT}" SERVER_WG_PORT
+  while ! [[ ${SERVER_WG_PORT} =~ ^[0-9]+$ ]] || [ "${SERVER_WG_PORT}" -lt 1 ] || [ "${SERVER_WG_PORT}" -gt 65535 ]; do
+    SERVER_WG_PORT=$(ask_input "Server WireGuard port [1-65535]" "$RANDOM_PORT")
   done
 
-  until [[ ${CLIENT_DNS_1} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
-    read -rp "First DNS resolver to use for the clients: " -e -i 1.1.1.1 CLIENT_DNS_1
+  while ! [[ ${CLIENT_DNS_1} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
+    CLIENT_DNS_1=$(ask_input "First DNS resolver to use for the clients" "1.1.1.1")
   done
 
-  until [[ ${CLIENT_DNS_2} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
-    read -rp "Second DNS resolver to use for the clients (optional): " -e -i 1.0.0.1 CLIENT_DNS_2
-    if [[ ${CLIENT_DNS_2} == "" ]]; then
-      CLIENT_DNS_2="${CLIENT_DNS_1}"
+  while ! [[ ${CLIENT_DNS_2} =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
+    CLIENT_DNS_2=$(ask_input "Second DNS resolver to use for the clients (optional)" "1.0.0.1")
+    if [[ -z $CLIENT_DNS_2 ]]; then
+      CLIENT_DNS_2=$CLIENT_DNS_1
     fi
   done
 
-  until [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
+  while ! [[ ${ALLOWED_IPS} =~ ^.+$ ]]; do
     echo -e "\nWireGuard uses a parameter called AllowedIPs to determine what is routed over the VPN."
     ALLOWED_IPS_DEFAULT="0.0.0.0/0,::/0"
     if [ "$CONFIG_IPV6" -eq 0 ]; then
       ALLOWED_IPS_DEFAULT="0.0.0.0/0"
     fi
-
-    read -rp "Allowed IPs list for generated clients (leave default to route everything): " -e -i $ALLOWED_IPS_DEFAULT ALLOWED_IPS
-    if [[ ${ALLOWED_IPS} == "" ]]; then
+    ALLOWED_IPS=$(ask_input "Allowed IPs list for generated clients (leave default to route everything)" "$ALLOWED_IPS_DEFAULT")
+    if [[ -z $ALLOWED_IPS ]]; then
       ALLOWED_IPS=$ALLOWED_IPS_DEFAULT
     fi
   done
 
   VPN_PREFIX_V4=$(echo "$SERVER_WG_IPV4" | sed 's/\.[0-9]\+$//').0
-  read -rp "SSH. Allow root login from IP: " -e -i "$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1" SSH_ALLOW_IP
-
-  read -rp "Fail2Ban. Ignore IP: " -e -i "$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1" FAIL2BAN_IGNORE_IP
+  SSH_ALLOW_IP=$(ask_input "SSH. Allow root login from IP" "$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1")
+  FAIL2BAN_IGNORE_IP=$(ask_input "Fail2Ban. Ignore IP" "$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1")
 
   echo ""
 }
@@ -795,16 +843,6 @@ server {
 }
 
 function certbot() {
-  if [[ "$INSTALL_ADGUARD" -eq 0 && "$INSTALL_3XUI" -eq 0 ]]; then
-    return 1
-  fi
-
-  CERTBOT=0
-  read -rp "Generate certificates for domainы ? (y/n): " -e -i "y" answer
-  if [ "$answer" != "y" ]; then
-    CERTBOT=1
-  fi
-
   if [ "$CERTBOT" -eq 0 ]; then
     return 1
   fi
