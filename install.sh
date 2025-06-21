@@ -12,18 +12,36 @@ function setVariables() {
   X_UI_PORT=8081
   X_UI_RNDSTR=$(tr -dc A-Za-z0-9 </dev/urandom | head -c "$(shuf -i 6-12 -n 1)")
 
+  INSTALL_ADGUARD=0
+  read -rp "Install Adguard Home? (y/n): " -e -i "y" answer
+  if [ "$answer" != "y" ]; then
+    INSTALL_ADGUARD=1
+  fi
+
+  INSTALL_3XUI=0
+  read -rp "Install 3X UI Panel? (y/n): " -e -i "y" answer
+  if [ "$answer" != "y" ]; then
+    INSTALL_3XUI=1
+  fi
+
   read -rp "Enter hostname: " -e -i "$(hostname)" HOSTNAME
   read -rp "Enter username: " -e -i "john" USERNAME
-  read -rp "Adguard Home. Enter domain: " -e -i "dns.$HOSTNAME" DOMAIN_ADGUARD
-  read -rp "Adguard Home. Enter password: " ADGUARD_PASS
-  read -rp "3X UI panel. Enter domain: " -e -i "3x.$HOSTNAME" DOMAIN_3X_UI
-  read -rp "3X UI panel. Enter password: " X_UI_PASS
-  read -rp "3X UI panel. Enter path: " -e -i "$X_UI_RNDSTR" X_UI_RNDSTR
 
-  RANDOM_PORT=$(shuf -i49152-65535 -n1)
-  until [[ ${VLESS_PORT} =~ ^[0-9]+$ ]] && [ "${VLESS_PORT}" -ge 1 ] && [ "${VLESS_PORT}" -le 65535 ]; do
-    read -rp "3X UI VLESS. Enter connection port [1-65535]: " -e -i "${RANDOM_PORT}" VLESS_PORT
-  done
+  if [ "$INSTALL_ADGUARD" -eq 1 ]; then
+    read -rp "Adguard Home. Enter domain: " -e -i "dns.$HOSTNAME" DOMAIN_ADGUARD
+    read -rp "Adguard Home. Enter password: " ADGUARD_PASS
+  fi
+
+  if [ "$INSTALL_3XUI" -eq 1 ]; then
+    read -rp "3X UI panel. Enter domain: " -e -i "3x.$HOSTNAME" DOMAIN_3X_UI
+    read -rp "3X UI panel. Enter password: " X_UI_PASS
+    read -rp "3X UI panel. Enter path: " -e -i "$X_UI_RNDSTR" X_UI_RNDSTR
+
+    RANDOM_PORT=$(shuf -i49152-65535 -n1)
+    until [[ ${VLESS_PORT} =~ ^[0-9]+$ ]] && [ "${VLESS_PORT}" -ge 1 ] && [ "${VLESS_PORT}" -le 65535 ]; do
+      read -rp "3X UI VLESS. Enter connection port [1-65535]: " -e -i "${RANDOM_PORT}" VLESS_PORT
+    done
+  fi
 
   CONFIG_IPV6=0
   read -rp "Disable IPv6? (y/n): " -e -i "y" answer
@@ -146,7 +164,8 @@ function mainInstall() {
     python3-venv \
     libaugeas0 \
     cron \
-    rsyslog
+    rsyslog \
+    micro
 
   #Remove snapd
   if dpkg -l | grep -q snapd; then
@@ -261,23 +280,40 @@ net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
 
 function swapConfig {
   echo "Set swap config..."
+
+  # Проверка, настроен ли уже swap
   if swapon --show | grep -q '^'; then
-    echo "Swap is configured"
+    echo "Swap is already configured"
     swapon --show
     return
   fi
 
-  read -rp "Enter swap size: " -e -i 2G SWAP_SIZE
+  # Получаем объем ОЗУ в мегабайтах
+  MEM_TOTAL_MB=$(grep MemTotal /proc/meminfo | awk '{print int($2 / 1024)}')
 
-  fallocate -l $SWAP_SIZE /swapfile
+  # Решаем, какой размер swap выставлять
+  if [[ "$MEM_TOTAL_MB" -le 4096 ]]; then
+    SWAP_SIZE_MB="$MEM_TOTAL_MB"
+  else
+    SWAP_SIZE_MB=4096
+  fi
+
+  echo "Detected RAM: ${MEM_TOTAL_MB} MB"
+  echo "Will configure swap of ${SWAP_SIZE_MB} MB"
+
+  # Создание swap-файла
+  fallocate -l "${SWAP_SIZE_MB}M" /swapfile
   chmod 600 /swapfile
   mkswap /swapfile
   swapon /swapfile
-  echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+  # Добавляем в fstab
+  echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
 
   echo 'vm.swappiness=10
 vm.vfs_cache_pressure = 50' >/etc/sysctl.d/10-swap.conf
 
+  sysctl --system
   swapon --show
 
   echo ""
@@ -328,10 +364,7 @@ function zshConfig {
   usermod -s /usr/bin/zsh root
 
   git clone --depth 1 https://github.com/junegunn/fzf.git /root/.fzf
-  /root/.fzf/install --bin
-  ln -s /root/.fzf/bin/fzf /usr/bin/fzf
-  ln -s /root/.fzf/bin/fzf-preview.sh /usr/bin/fzf-preview.sh
-  ln -s /root/.fzf/bin/fzf-tmux /usr/bin/fzf-tmux
+  /root/.fzf/install --all
 
   echo "export EDITOR='nano'
 
@@ -362,9 +395,15 @@ source <(fzf --zsh)
 
   usermod -s /usr/bin/zsh $USERNAME
   cp /root/.zshrc /home/$USERNAME/.zshrc
+  cp /root/.fzf.bash /home/$USERNAME/.fzf.bash
+  cp /root/.fzf.zsh /home/$USERNAME/.fzf.zsh
   cp -r /root/.oh-my-zsh/ /home/$USERNAME/
+  cp -r /root/.fzf/ /home/$USERNAME/
   chown $USERNAME:$USERNAME /home/$USERNAME/.zshrc
+  chown $USERNAME:$USERNAME /home/$USERNAME/.fzf.bash
+  chown $USERNAME:$USERNAME /home/$USERNAME/.fzf.zsh
   chown -R $USERNAME:$USERNAME /home/$USERNAME/.oh-my-zsh
+  chown -R $USERNAME:$USERNAME /home/$USERNAME/.fzf
 
   echo ""
 }
@@ -697,7 +736,8 @@ proxy_set_header X-Real-IP $remote_addr;
 
 ' >/etc/nginx/proxy.conf
 
-  echo "
+  if [ "$INSTALL_ADGUARD" -eq 1 ]; then
+    echo "
 server {
     listen 80;
 
@@ -722,8 +762,10 @@ server {
         proxy_pass http://127.0.0.1:$ADGUARD_PORT;
     }
 }" >/etc/nginx/conf.d/adguard.conf
+  fi
 
-  echo "
+  if [ "$INSTALL_3XUI" -eq 1 ]; then
+    echo "
 server {
     listen 80;
 
@@ -740,6 +782,7 @@ server {
     }
 
 }" >/etc/nginx/conf.d/3x-ui.conf
+  fi
   echo ""
 
   systemctl restart nginx
@@ -752,13 +795,33 @@ server {
 }
 
 function certbot() {
+  if [[ "$INSTALL_ADGUARD" -eq 0 && "$INSTALL_3XUI" -eq 0 ]]; then
+    return 1
+  fi
+
+  CERTBOT=0
+  read -rp "Generate certificates for domainы ? (y/n): " -e -i "y" answer
+  if [ "$answer" != "y" ]; then
+    CERTBOT=1
+  fi
+
+  if [ "$CERTBOT" -eq 0 ]; then
+    return 1
+  fi
+
   echo "Generate certificates..."
   python3 -m venv /opt/certbot/
   /opt/certbot/bin/pip install --upgrade pip
   /opt/certbot/bin/pip install certbot certbot-nginx
   ln -sf /opt/certbot/bin/certbot /usr/bin/certbot
 
-  certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_ADGUARD" -d "$DOMAIN_ADGUARD" -d "$DOMAIN_3X_UI"
+  if [[ "$INSTALL_ADGUARD" -eq 1 && "$INSTALL_3XUI" -eq 1 ]]; then
+    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_ADGUARD" -d "$DOMAIN_ADGUARD" -d "$DOMAIN_3X_UI"
+  elif [[ "$INSTALL_ADGUARD" -eq 1 ]]; then
+    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_ADGUARD" -d "$DOMAIN_ADGUARD"
+  elif [[ "$INSTALL_3XUI" -eq 1 ]]; then
+    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_3X_UI" -d "$DOMAIN_3X_UI"
+  fi
 
   crontab -l | grep -v "certbot" | crontab -
   (
