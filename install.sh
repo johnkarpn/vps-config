@@ -14,13 +14,13 @@ function setVariables() {
 
   INSTALL_ADGUARD=0
   read -rp "Install Adguard Home? (y/n): " -e -i "y" answer
-  if [ "$answer" != "y" ]; then
+  if [ "$answer" = "y" ]; then
     INSTALL_ADGUARD=1
   fi
 
   INSTALL_3XUI=0
   read -rp "Install 3X UI Panel? (y/n): " -e -i "y" answer
-  if [ "$answer" != "y" ]; then
+  if [ "$answer" = "y" ]; then
     INSTALL_3XUI=1
   fi
 
