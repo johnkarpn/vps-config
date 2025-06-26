@@ -215,9 +215,11 @@ function mainInstall() {
     micro
 
 
+  cd ~
   git clone https://github.com/fail2ban/fail2ban.git
   cd fail2ban
-  sudo python setup.py install
+  python3 setup.py install
+  cd ~
   rm -rf fail2ban
 
   #Remove snapd
