@@ -416,7 +416,6 @@ function zshConfig {
   rm -rf /home/$USERNAME/.zshrc
 
   usermod -s /usr/bin/zsh root
-  curl -sS https://starship.rs/install.sh | sh -s -- -f
 
   echo "
 ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
@@ -424,9 +423,16 @@ ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
 [ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
 source "${ZINIT_HOME}/zinit.zsh"
 
-zi load zdharma-continuum/history-search-multi-word
-zi light zsh-users/zsh-autosuggestions
-zinit light zdharma-continuum/fast-syntax-highlighting
+zinit for \
+    light-mode \
+  zsh-users/zsh-autosuggestions \
+    light-mode \
+  zdharma-continuum/fast-syntax-highlighting \
+  zdharma-continuum/history-search-multi-word \
+    light-mode \
+    pick"async.zsh" \
+    src"pure.zsh" \
+  sindresorhus/pure
 
 zi light Aloxaf/fzf-tab
 zi ice from"gh-r" as"program"
@@ -458,7 +464,6 @@ setopt inc_append_history     # add commands to HISTFILE in order of execution
 setopt share_history          # share command history data
 setopt glob_dots
 
-eval "$(starship init zsh)"
 " >>/root/.zshrc
 
   usermod -s /usr/bin/zsh $USERNAME
