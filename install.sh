@@ -56,6 +56,8 @@ function setVariables() {
   X_UI_PORT=8081
   X_UI_RNDSTR=$(tr -dc A-Za-z0-9 </dev/urandom | head -c "$(shuf -i 6-12 -n 1)")
 
+  SSH_PUBLIC_KEY=$(ask_input "Enter public SSH key (optional)" "")
+
   INSTALL_ADGUARD=0
   if ask_yes_no "Install Adguard Home?" "y"; then
     INSTALL_ADGUARD=1
@@ -376,6 +378,14 @@ vm.vfs_cache_pressure = 50' >/etc/sysctl.d/10-swap.conf
 }
 
 function userConfig {
+  if [ -n "$SSH_PUBLIC_KEY" ]; then
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+    echo "$SSH_PUBLIC_KEY" > /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
+    echo "Public key added to /root/.ssh/authorized_keys"
+  fi
+
   echo "Creating user: $USERNAME..."
   if id "$USERNAME" &>/dev/null; then
     return
