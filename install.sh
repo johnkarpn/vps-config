@@ -219,6 +219,7 @@ function mainInstall() {
   git clone https://github.com/fail2ban/fail2ban.git
   cd fail2ban
   python3 setup.py install
+  cp ./build/fail2ban.service /etc/systemd/system/fail2ban.service
   cd ~
   rm -rf fail2ban
 
