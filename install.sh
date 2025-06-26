@@ -413,28 +413,28 @@ function zshConfig {
   echo "Set zsh config..."
 
   rm -rf /root/.zshrc
-  rm -rf /root/.oh-my-zsh
   rm -rf /home/$USERNAME/.zshrc
-  rm -rf /home/$USERNAME/.oh-my-zsh
-  apt remove fzf
-  rm -rf /usr/bin/fzf
-  rm -rf /usr/bin/fzf-preview.sh
-  rm -rf /usr/bin/fzf-tmux
-  rm -rf /root/.fzf
-
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-  git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-/root/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
-
-  sed -i 's/^ZSH_THEME=".*"/ZSH_THEME="dst"/' /root/.zshrc
-  sed -i '/^plugins=(/c\plugins=(git zsh-syntax-highlighting zsh-autosuggestions)' /root/.zshrc
 
   usermod -s /usr/bin/zsh root
+  curl -sS https://starship.rs/install.sh | sh -s -- -f
 
-  git clone --depth 1 https://github.com/junegunn/fzf.git /root/.fzf
-  /root/.fzf/install --all
+  echo "
+ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
+[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
+[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
+source "${ZINIT_HOME}/zinit.zsh"
 
-  echo "export EDITOR='nano'
+zi load zdharma-continuum/history-search-multi-word
+zi light zsh-users/zsh-autosuggestions
+zinit light zdharma-continuum/fast-syntax-highlighting
+
+zi light Aloxaf/fzf-tab
+zi ice from"gh-r" as"program"
+zi load junegunn/fzf
+zi ice multisrc"shell/{completion,key-bindings}.zsh" id-as"junegunn/fzf_completions" pick"/dev/null"
+zi light junegunn/fzf
+
+export EDITOR='nano'
 
 alias ls='ls -a --color=auto --group-directories-first'
 alias ll='eza -lga --group-directories-first'
@@ -442,7 +442,6 @@ alias diff='diff --color=auto'
 alias grep='grep --color=auto'
 alias dmesg='dmesg --color=always'
 alias cat='batcat -pp'
-
 
 ## History file configuration
 [ -z \"\$HISTFILE\" ] && HISTFILE=\"\$HOME/.zsh_history\"
@@ -457,21 +456,14 @@ setopt hist_ignore_space      # ignore commands that start with space
 setopt hist_verify            # show command with history expansion to user before running it
 setopt inc_append_history     # add commands to HISTFILE in order of execution
 setopt share_history          # share command history data
+setopt glob_dots
 
-source <(fzf --zsh)
+eval "$(starship init zsh)"
 " >>/root/.zshrc
 
   usermod -s /usr/bin/zsh $USERNAME
   cp /root/.zshrc /home/$USERNAME/.zshrc
-  cp /root/.fzf.bash /home/$USERNAME/.fzf.bash
-  cp /root/.fzf.zsh /home/$USERNAME/.fzf.zsh
-  cp -r /root/.oh-my-zsh/ /home/$USERNAME/
-  cp -r /root/.fzf/ /home/$USERNAME/
   chown $USERNAME:$USERNAME /home/$USERNAME/.zshrc
-  chown $USERNAME:$USERNAME /home/$USERNAME/.fzf.bash
-  chown $USERNAME:$USERNAME /home/$USERNAME/.fzf.zsh
-  chown -R $USERNAME:$USERNAME /home/$USERNAME/.oh-my-zsh
-  chown -R $USERNAME:$USERNAME /home/$USERNAME/.fzf
 
   echo ""
 }
