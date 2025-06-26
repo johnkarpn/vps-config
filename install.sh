@@ -388,6 +388,8 @@ function userConfig {
 
   echo "Creating user: $USERNAME..."
   if id "$USERNAME" &>/dev/null; then
+    echo "$USERNAME already created"
+    echo ""
     return
   fi
 
