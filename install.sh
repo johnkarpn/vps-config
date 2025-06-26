@@ -205,7 +205,6 @@ function mainInstall() {
     eza \
     bat \
     nginx \
-    fail2ban \
     lsof \
     apache2-utils \
     python3 \
@@ -214,6 +213,12 @@ function mainInstall() {
     cron \
     rsyslog \
     micro
+
+
+  git clone https://github.com/fail2ban/fail2ban.git
+  cd fail2ban
+  sudo python setup.py install
+  rm -rf fail2ban
 
   #Remove snapd
   if dpkg -l | grep -q snapd; then
@@ -609,6 +614,10 @@ filters:
     url: https://raw.githubusercontent.com/Kittyskj/FreeFromMi/main/hosts_ads_tracking
     name: FreeFromMi
     id: 1724655741
+  - enabled: true
+    url: https://adguardteam.github.io/HostlistsRegistry/assets/filter_60.txt
+    name: HaGeZi's Xiaomi Tracker Blocklist
+    id: 1732716490
 whitelist_filters: []
 user_rules: []
 dhcp:
