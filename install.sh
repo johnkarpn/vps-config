@@ -418,10 +418,10 @@ function zshConfig {
   usermod -s /usr/bin/zsh root
 
   echo "
-ZINIT_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}/zinit/zinit.git"
-[ ! -d $ZINIT_HOME ] && mkdir -p "$(dirname $ZINIT_HOME)"
-[ ! -d $ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git "$ZINIT_HOME"
-source "${ZINIT_HOME}/zinit.zsh"
+ZINIT_HOME=\"\${XDG_DATA_HOME:-\${HOME}/.local/share}/zinit/zinit.git\"
+[ ! -d \$ZINIT_HOME ] && mkdir -p \"\$(dirname \$ZINIT_HOME)\"
+[ ! -d \$ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git \"\$ZINIT_HOME\"
+source \"\${ZINIT_HOME}/zinit.zsh\"
 
 zinit for \
     light-mode \
@@ -430,14 +430,14 @@ zinit for \
   zdharma-continuum/fast-syntax-highlighting \
   zdharma-continuum/history-search-multi-word \
     light-mode \
-    pick"async.zsh" \
-    src"pure.zsh" \
+    pick\"async.zsh\" \
+    src\"pure.zsh\" \
   sindresorhus/pure
 
 zi light Aloxaf/fzf-tab
-zi ice from"gh-r" as"program"
+zi ice from\"gh-r\" as\"program\"
 zi load junegunn/fzf
-zi ice multisrc"shell/{completion,key-bindings}.zsh" id-as"junegunn/fzf_completions" pick"/dev/null"
+zi ice multisrc\"shell/{completion,key-bindings}.zsh\" id-as\"junegunn/fzf_completions\" pick\"/dev/null\"
 zi light junegunn/fzf
 
 export EDITOR='nano'
