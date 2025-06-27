@@ -58,6 +58,10 @@ function setVariables() {
 
   SSH_PUBLIC_KEY=$(ask_input "Enter public SSH key (optional)" "")
 
+  while ! [[ ${SSH_PORT} =~ ^[0-9]+$ ]] || [ "${SSH_PORT}" -lt 1 ] || [ "${SSH_PORT}" -gt 65535 ]; do
+    SSH_PORT=$(ask_input "Enter SSH port [1-65535]" "22")
+  done
+
   INSTALL_ADGUARD=0
   if ask_yes_no "Install Adguard Home?" "y"; then
     INSTALL_ADGUARD=1
@@ -215,7 +219,8 @@ function mainInstall() {
     libaugeas0 \
     cron \
     rsyslog \
-    micro
+    micro \
+    net-tools
 
 
   cd ~
@@ -320,7 +325,11 @@ set functioncolor magenta
 
   echo "net.ipv4.ip_forward = 1
 net.core.default_qdisc=fq
-net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
+net.ipv4.tcp_congestion_control=bbr
+net.core.rmem_default=262144
+net.core.rmem_max=4194304
+net.core.wmem_default=262144
+net.core.wmem_max=4194304" >/etc/sysctl.d/10-vpn.conf
 
   echo $HOSTNAME >/etc/hostname
 
@@ -329,6 +338,7 @@ net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
   sed -i 's/#\?\(PermitRootLogin\s*\).*$/\1 no/' /etc/ssh/sshd_config
   sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
   sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 yes/' /etc/ssh/sshd_config
+  sed -i "s/#\?\(Port\s*\).*$/\1 ${SSH_PORT}/" /etc/ssh/sshd_config
 
   if [[ -n "$TRUSTED_IP_COMMAS" ]]; then
     MATCH_ADDRESS_LIST="$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1,$TRUSTED_IP_COMMAS"
@@ -340,6 +350,7 @@ net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
   PermitRootLogin yes
   PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
 
+  systemctl restart ssh
   echo ""
 }
 
@@ -966,6 +977,25 @@ function nftableConfig() {
   curl https://cdn.jsdelivr.net/npm/@ip-location-db/geolite2-country/geolite2-country-ipv4.csv | awk -F ',' '/^.*RU/ { if ($1 == $2) print "  "$1","; else print "  "$1"-"$2","}' >>/etc/nftables/dns.conf
   echo "}" >>/etc/nftables/dns.conf
 
+  if [ "$INSTALL_ADGUARD" -eq 1 ]; then
+    DNS_RULES=$(cat<<EOF
+      ## Exclude check GEO IP
+      #tcp dport 53 ct state new counter accept comment "Permit DNS connections"
+      #udp dport 53 ct state new counter accept comment "Permit DNS connections"
+      #tcp dport 853 ct state new counter accept comment "Permit DNS connections"
+      #udp dport 853 ct state new counter accept comment "Permit DNS connections"
+
+      ## With check GEO IP
+      #tcp dport 53 ct state new counter jump check_dns comment "Permit DNS connections"
+      udp dport 53 ct state new counter jump check_dns comment "Permit DNS connections"
+      tcp dport 853 ct state new counter jump check_dns comment "Permit DNS connections"
+      #udp dport 853 ct state new counter jump check_dns comment "Permit DNS connections"
+EOF
+  )
+  else
+    DNS_RULES=""
+  fi
+
   echo "#!/usr/sbin/nft -f
 
 flush ruleset
@@ -982,6 +1012,8 @@ define VPN_PREFIX_V4 = $VPN_PREFIX_V4/24
 define WIREGUARD_PORT = $SERVER_WG_PORT
 ## WireGuard listen port
 define VLESS_PORT = $VLESS_PORT
+## SSH listen port
+define SSH_PORT = $SSH_PORT
 
 ############################## VARIABLES END ##############################
 
@@ -1065,20 +1097,12 @@ table inet filter {
     udp dport 33434-33524 limit rate 500/second counter accept comment \"Permit inbound UDP traceroute limited to 500 PPS\"
 
     ## Permit inbound SSH
-    tcp dport ssh ct state new counter accept comment \"Permit inbound SSH connections\"
+    tcp dport \$SSH_PORT ct state new counter accept comment \"Permit inbound SSH connections\"
 
     ## Permit inbound HTTP and HTTPS
     tcp dport { http, https } ct state new counter accept comment \"Permit inbound HTTP and HTTPS connections\"
 
-    #tcp dport 53 ct state new counter accept comment \"Permit DNS connections\"
-    #udp dport 53 ct state new counter accept comment \"Permit DNS connections\"
-    #tcp dport 853 ct state new counter accept comment \"Permit DNS connections\"
-    #udp dport 853 ct state new counter accept comment \"Permit DNS connections\"
-
-    #tcp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
-    udp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
-    tcp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
-    #udp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
+    $DNS_RULES
 
     udp dport \$WIREGUARD_PORT counter accept comment \"Permit WG connections\"
     tcp dport \$VLESS_PORT counter accept comment \"Permit 3X VLESS connections\"
