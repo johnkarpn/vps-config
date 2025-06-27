@@ -168,8 +168,9 @@ function setVariables() {
   done
 
   VPN_PREFIX_V4=$(echo "$SERVER_WG_IPV4" | sed 's/\.[0-9]\+$//').0
-  SSH_ALLOW_IP=$(ask_input "SSH. Allow root login from IP" "$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1")
-  FAIL2BAN_IGNORE_IP=$(ask_input "Fail2Ban. Ignore IP" "$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1")
+  TRUSTED_IP=$(ask_input "Trusted IP addresses for SSH and Fail2Ban (optional)" "")
+  TRUSTED_IP_SPACES=$(echo "$TRUSTED_IP" | tr ',' ' ' | xargs)
+  TRUSTED_IP_COMMAS=$(echo "$TRUSTED_IP" | tr ' ,' ',' | sed 's/,,*/,/g' | sed 's/^,//;s/,$//')
 
   echo ""
 }
@@ -329,7 +330,13 @@ net.ipv4.tcp_congestion_control=bbr" >/etc/sysctl.d/10-vpn.conf
   sed -i 's/#\?\(PasswordAuthentication\s*\).*$/\1 no/' /etc/ssh/sshd_config
   sed -i 's/#\?\(TCPKeepAlive\s*\).*$/\1 yes/' /etc/ssh/sshd_config
 
-  echo "Match Address $SSH_ALLOW_IP
+  if [[ -n "$TRUSTED_IP_COMMAS" ]]; then
+    MATCH_ADDRESS_LIST="$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1,$TRUSTED_IP_COMMAS"
+  else
+    MATCH_ADDRESS_LIST="$SERVER_PUB_IP,$VPN_PREFIX_V4/24,127.0.0.1"
+  fi
+
+  echo "Match Address $MATCH_ADDRESS_LIST
   PermitRootLogin yes
   PasswordAuthentication yes" >/etc/ssh/sshd_config.d/allow_ip.conf
 
@@ -594,8 +601,8 @@ tls:
   allow_unencrypted_doh: true
   certificate_chain: \"\"
   private_key: \"\"
-  certificate_path: /etc/letsencrypt/live/$DOMAIN_ADGUARD/fullchain.pem
-  private_key_path: /etc/letsencrypt/live/$DOMAIN_ADGUARD/privkey.pem
+  certificate_path: /etc/letsencrypt/live/$HOSTNAME/fullchain.pem
+  private_key_path: /etc/letsencrypt/live/$HOSTNAME/privkey.pem
   strict_sni_check: false
 querylog:
   dir_path: \"\"
@@ -772,7 +779,7 @@ http {
 }
 ' >/etc/nginx/nginx.conf
 
-  echo '
+  echo "
 proxy_buffers 32 4k;
 proxy_connect_timeout 240;
 proxy_headers_hash_bucket_size 128;
@@ -782,28 +789,27 @@ proxy_read_timeout 240;
 proxy_send_timeout 240;
 
 # Proxy Cache and Cookie Settings
-proxy_cache_bypass $cookie_session;
-#proxy_cookie_path / "/; Secure"; # enable at your own risk, may break certain apps
-proxy_no_cache $cookie_session;
+proxy_cache_bypass \$cookie_session;
+#proxy_cookie_path / \"/; Secure\"; # enable at your own risk, may break certain apps
+proxy_no_cache \$cookie_session;
 
 # Proxy Header Settings
-proxy_set_header Early-Data $ssl_early_data;
-proxy_set_header Host $host;
-proxy_set_header Proxy "";
-proxy_set_header Upgrade $http_upgrade;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Host $host;
-proxy_set_header X-Forwarded-Method $request_method;
-proxy_set_header X-Forwarded-Port $server_port;
-proxy_set_header X-Forwarded-Proto $scheme;
-proxy_set_header X-Forwarded-Server $host;
+proxy_set_header Early-Data \$ssl_early_data;
+proxy_set_header Host \$host;
+proxy_set_header Proxy \"\";
+proxy_set_header Upgrade \$http_upgrade;
+proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-Host \$host;
+proxy_set_header X-Forwarded-Method \$request_method;
+proxy_set_header X-Forwarded-Port \$server_port;
+proxy_set_header X-Forwarded-Proto \$scheme;
+proxy_set_header X-Forwarded-Server \$host;
 proxy_set_header X-Forwarded-Ssl on;
-proxy_set_header X-Forwarded-Uri $request_uri;
-proxy_set_header X-Original-Method $request_method;
-proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
-proxy_set_header X-Real-IP $remote_addr;
-
-' >/etc/nginx/proxy.conf
+proxy_set_header X-Forwarded-Uri \$request_uri;
+proxy_set_header X-Original-Method \$request_method;
+proxy_set_header X-Original-URL \$scheme://\$http_host\$request_uri;
+proxy_set_header X-Real-IP \$remote_addr;
+" >/etc/nginx/proxy.conf
 
   if [ "$INSTALL_ADGUARD" -eq 1 ]; then
     echo "
@@ -875,11 +881,11 @@ function certbot() {
   ln -sf /opt/certbot/bin/certbot /usr/bin/certbot
 
   if [[ "$INSTALL_ADGUARD" -eq 1 && "$INSTALL_3XUI" -eq 1 ]]; then
-    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_ADGUARD" -d "$DOMAIN_ADGUARD" -d "$DOMAIN_3X_UI"
+    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$HOSTNAME" -d "$HOSTNAME" -d "$DOMAIN_ADGUARD" -d "$DOMAIN_3X_UI"
   elif [[ "$INSTALL_ADGUARD" -eq 1 ]]; then
-    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_ADGUARD" -d "$DOMAIN_ADGUARD"
+    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$HOSTNAME" -d "$HOSTNAME" -d "$DOMAIN_ADGUARD"
   elif [[ "$INSTALL_3XUI" -eq 1 ]]; then
-    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$DOMAIN_3X_UI" -d "$DOMAIN_3X_UI"
+    certbot --nginx --agree-tos --force-renewal --non-interactive --register-unsafely-without-email --cert-name "$HOSTNAME" -d "$HOSTNAME" -d "$DOMAIN_3X_UI"
   fi
 
   crontab -l | grep -v "certbot" | crontab -
@@ -1069,10 +1075,10 @@ table inet filter {
     #tcp dport 853 ct state new counter accept comment \"Permit DNS connections\"
     #udp dport 853 ct state new counter accept comment \"Permit DNS connections\"
 
-    tcp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
+    #tcp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
     udp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
     tcp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
-    udp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
+    #udp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
 
     udp dport \$WIREGUARD_PORT counter accept comment \"Permit WG connections\"
     tcp dport \$VLESS_PORT counter accept comment \"Permit 3X VLESS connections\"
@@ -1135,13 +1141,16 @@ table inet nat {
 
 function fail2banConfig() {
   echo "Set fail2ban config..."
+  IGNORE_IP_LIST="$SERVER_PUB_IP $VPN_PREFIX_V4/24 127.0.0.1"
+  [[ -n "$TRUSTED_IP_SPACES" ]] && IGNORE_IP_LIST+=" $TRUSTED_IP_SPACES"
+
   echo "[DEFAULT]
 bantime  = 7d
 findtime  = 1h
 maxretry = 5
 banaction = nftables-multiport
 banaction_allports = nftables-allports
-ignoreip = $FAIL2BAN_IGNORE_IP
+ignoreip = $IGNORE_IP_LIST
 backend = auto
 
 [sshd]
