@@ -967,18 +967,47 @@ function nftableConfig() {
     iptables -t raw -X
   fi
 
-  echo "define dns_addr_list = {
+  if [ "$INSTALL_ADGUARD" -eq 1 ]; then
+    echo "#!/bin/bash
+set -euo pipefail
+
+OUTPUT_FILE=\"/etc/nftables/dns.conf\"
+
+echo \"define dns_addr_list = {
   127.0.0.1,
   10.0.0.0/8,
   172.16.0.0/12,
   192.168.0.0/16,
-  $SERVER_PUB_IP," >/etc/nftables/dns.conf
+  $SERVER_PUB_IP,\" > \"\$OUTPUT_FILE\"
 
-  curl https://cdn.jsdelivr.net/npm/@ip-location-db/geolite2-country/geolite2-country-ipv4.csv | awk -F ',' '/^.*RU/ { if ($1 == $2) print "  "$1","; else print "  "$1"-"$2","}' >>/etc/nftables/dns.conf
-  echo "}" >>/etc/nftables/dns.conf
+curl -s https://cdn.jsdelivr.net/npm/@ip-location-db/geolite2-country/geolite2-country-ipv4.csv | \
+awk -F ',' '/^.*RU/ { if (\$1 == \$2) print \"  \"\$1\",\"; else print \"  \"\$1\"-\"\$2\",\"}' >> \"\$OUTPUT_FILE\"
 
-  if [ "$INSTALL_ADGUARD" -eq 1 ]; then
-    DNS_RULES=$(cat<<EOF
+echo \"}\" >> \"\$OUTPUT_FILE\"
+
+nft -f /etc/nftables.conf
+" > /root/update-nft-dns-list.sh
+
+    chmod +x /root/update-nft-dns-list.sh
+
+    CRON_JOB="0 4 * * 1 /root/update-nft-dns-list.sh >/dev/null 2>&1"
+    (crontab -l 2>/dev/null | grep -Fv "/root/update-nft-dns-list.sh" ; echo "$CRON_JOB") | crontab -
+
+    DNS_INCLUDE_STR=$(cat<<EOF
+      include "/etc/nftables/dns.conf"
+EOF
+   )
+
+    DNS_CHECK_STR=$(cat<<EOF
+      chain check_dns {
+        ip saddr \$dns_addr_list counter accept
+
+        drop
+      }
+EOF
+   )
+
+    DNS_RULES_STR=$(cat<<EOF
       ## Exclude check GEO IP
       #tcp dport 53 ct state new counter accept comment "Permit DNS connections"
       #udp dport 53 ct state new counter accept comment "Permit DNS connections"
@@ -992,8 +1021,11 @@ function nftableConfig() {
       #udp dport 853 ct state new counter jump check_dns comment "Permit DNS connections"
 EOF
   )
+
   else
-    DNS_RULES=""
+    DNS_CHECK_STR=""
+    DNS_INCLUDE_STR=""
+    DNS_RULES_STR=""
   fi
 
   echo "#!/usr/sbin/nft -f
@@ -1025,7 +1057,7 @@ define RFC1918 = {
   192.168.0.0/16
 }
 
-include \"/etc/nftables/dns.conf\"
+$DNS_INCLUDE_STR
 
 # Raw filtering table
 table inet raw {
@@ -1102,7 +1134,7 @@ table inet filter {
     ## Permit inbound HTTP and HTTPS
     tcp dport { http, https } ct state new counter accept comment \"Permit inbound HTTP and HTTPS connections\"
 
-    $DNS_RULES
+    $DNS_RULES_STR
 
     udp dport \$WIREGUARD_PORT counter accept comment \"Permit WG connections\"
     tcp dport \$VLESS_PORT counter accept comment \"Permit 3X VLESS connections\"
@@ -1134,11 +1166,7 @@ table inet filter {
     oif \$DEV_WAN udp sport \$WIREGUARD_PORT ct state untracked counter accept comment \"Permit outbound untracked WireGuard traffic\"
   }
 
-  chain check_dns {
-    ip saddr \$dns_addr_list counter accept
-
-    drop
-  }
+  $DNS_CHECK_STR
 }
 
 table inet nat {
@@ -1156,6 +1184,8 @@ table inet nat {
   }
 }
 " >/etc/nftables.conf
+
+  /root/update-nft-dns-list.sh
 
   systemctl enable nftables
   systemctl restart nftables
