@@ -423,15 +423,15 @@ ZINIT_HOME=\"\${XDG_DATA_HOME:-\${HOME}/.local/share}/zinit/zinit.git\"
 [ ! -d \$ZINIT_HOME/.git ] && git clone https://github.com/zdharma-continuum/zinit.git \"\$ZINIT_HOME\"
 source \"\${ZINIT_HOME}/zinit.zsh\"
 
-zinit for \
-    light-mode \
-  zsh-users/zsh-autosuggestions \
-    light-mode \
-  zdharma-continuum/fast-syntax-highlighting \
-  zdharma-continuum/history-search-multi-word \
-    light-mode \
-    pick\"async.zsh\" \
-    src\"pure.zsh\" \
+zinit for \\
+    light-mode \\
+  zsh-users/zsh-autosuggestions \\
+    light-mode \\
+  zdharma-continuum/fast-syntax-highlighting \\
+  zdharma-continuum/history-search-multi-word \\
+    light-mode \\
+    pick\"async.zsh\" \\
+    src\"pure.zsh\" \\
   sindresorhus/pure
 
 zi light Aloxaf/fzf-tab
