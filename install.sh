@@ -967,6 +967,12 @@ function nftableConfig() {
     iptables -t raw -X
   fi
 
+  if [ "$INSTALL_3XUI" -eq 1 ]; then
+    VLESS_RULES_STR="tcp dport \$VLESS_PORT counter accept comment \"Permit 3X VLESS connections\""
+  else
+    VLESS_RULES_STR=""
+  fi
+
   if [ "$INSTALL_ADGUARD" -eq 1 ]; then
     echo "#!/bin/bash
 set -euo pipefail
@@ -993,34 +999,25 @@ nft -f /etc/nftables.conf
     CRON_JOB="0 4 * * 1 /root/update-nft-dns-list.sh >/dev/null 2>&1"
     (crontab -l 2>/dev/null | grep -Fv "/root/update-nft-dns-list.sh" ; echo "$CRON_JOB") | crontab -
 
-    DNS_INCLUDE_STR=$(cat<<EOF
-      include "/etc/nftables/dns.conf"
-EOF
-   )
+    DNS_INCLUDE_STR="include \"/etc/nftables/dns.conf\""
 
-    DNS_CHECK_STR=$(cat<<EOF
-      chain check_dns {
-        ip saddr \$dns_addr_list counter accept
+    DNS_CHECK_STR="chain check_dns {
+       ip saddr \$dns_addr_list counter accept
 
-        drop
-      }
-EOF
-   )
+       drop
+     }"
 
-    DNS_RULES_STR=$(cat<<EOF
-      ## Exclude check GEO IP
-      #tcp dport 53 ct state new counter accept comment "Permit DNS connections"
-      #udp dport 53 ct state new counter accept comment "Permit DNS connections"
-      #tcp dport 853 ct state new counter accept comment "Permit DNS connections"
-      #udp dport 853 ct state new counter accept comment "Permit DNS connections"
+    DNS_RULES_STR="## Exclude check GEO IP
+      #tcp dport 53 ct state new counter accept comment \"Permit DNS connections\"
+      #udp dport 53 ct state new counter accept comment \"Permit DNS connections\"
+      #tcp dport 853 ct state new counter accept comment \"Permit DNS connections\"
+      #udp dport 853 ct state new counter accept comment \"Permit DNS connections\"
 
       ## With check GEO IP
-      #tcp dport 53 ct state new counter jump check_dns comment "Permit DNS connections"
-      udp dport 53 ct state new counter jump check_dns comment "Permit DNS connections"
-      tcp dport 853 ct state new counter jump check_dns comment "Permit DNS connections"
-      #udp dport 853 ct state new counter jump check_dns comment "Permit DNS connections"
-EOF
-  )
+      #tcp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
+      udp dport 53 ct state new counter jump check_dns comment \"Permit DNS connections\"
+      tcp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\"
+      #udp dport 853 ct state new counter jump check_dns comment \"Permit DNS connections\""
 
   else
     DNS_CHECK_STR=""
@@ -1137,7 +1134,7 @@ table inet filter {
     $DNS_RULES_STR
 
     udp dport \$WIREGUARD_PORT counter accept comment \"Permit WG connections\"
-    tcp dport \$VLESS_PORT counter accept comment \"Permit 3X VLESS connections\"
+    $VLESS_RULES_STR
   }
 
   chain forward {
