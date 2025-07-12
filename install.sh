@@ -1206,6 +1206,7 @@ backend = auto
 
 [sshd]
 enabled = true
+port = $SSH_PORT
 
 [3x-ipl]
 enabled=true
